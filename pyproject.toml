@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "memgram"
+version = "0.1.0"
+description = "AI Memory Graph — persistent knowledge MCP server for AI assistants"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "Chris Watkins", email = "chris@watkinslabs.com" },
+]
+keywords = ["mcp", "ai", "memory", "knowledge-graph", "llm", "persistent-memory"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "mcp>=1.0.0",
+    "sqlite-vec>=0.1.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/chris17453/memgram"
+Repository = "https://github.com/chris17453/memgram"
+Issues = "https://github.com/chris17453/memgram/issues"
+
+[project.optional-dependencies]
+rag = [
+    "sentence-transformers>=2.2.0",
+    "numpy>=1.24.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[project.scripts]
+memgram = "memgram.server:main"
+memgram-export = "memgram.export:main_export"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/memgram"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]
