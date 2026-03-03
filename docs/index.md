@@ -1,14 +1,6 @@
----
-title: Home
-layout: default
-nav_order: 1
----
-
 # Memgram — AI Memory Graph
 
 A persistent memory layer for AI assistants, built as an [MCP](https://modelcontextprotocol.io/) server. Memgram gives any MCP-compatible AI (Copilot CLI, Claude Desktop, Claude Code, Cursor, etc.) the ability to remember thoughts, rules, decisions, and errors across sessions.
-
----
 
 ## Features
 
@@ -26,8 +18,6 @@ A persistent memory layer for AI assistants, built as an [MCP](https://modelcont
 - **Markdown export** — dump the entire database as linked markdown files
 - **Abstracted DB layer** — SQLite now, PostgreSQL/pgvector ready
 
----
-
 ## Quick Install
 
 ```bash
@@ -35,18 +25,16 @@ uv add memgram
 memgram serve
 ```
 
-See the [Getting Started](getting-started) guide for a full walkthrough.
-
----
+See the [Getting Started](getting-started.md) guide for a full walkthrough.
 
 ## Navigation
 
 | Section | Description |
 |---------|-------------|
-| [Getting Started](getting-started) | Install, setup, and your first session |
-| [Concepts](concepts/scoping) | Scoping, normalization, scoring, knowledge graph |
-| [Configuration](configuration/cli) | CLI flags, env vars, MCP client configs |
-| [Tools Reference](tools/) | All 24 MCP tools with params and examples |
-| [Data Model](data-model/) | Database tables, schema, relationships |
-| [Guides](guides/ai-instructions) | AI instructions, session workflow, branch workflow, export |
-| [Architecture](architecture) | Code structure, dispatch pipeline, extension points |
+| [Getting Started](getting-started.md) | Install, setup, and your first session |
+| [Concepts](concepts/index.md) | Scoping, normalization, scoring, knowledge graph |
+| [Configuration](configuration/index.md) | CLI flags, env vars, MCP client configs |
+| [Tools Reference](tools/index.md) | All 24 MCP tools with params and examples |
+| [Data Model](data-model/index.md) | Database tables, schema, relationships |
+| [Guides](guides/index.md) | AI instructions, session workflow, branch workflow, export |
+| [Architecture](architecture.md) | Code structure, dispatch pipeline, extension points |

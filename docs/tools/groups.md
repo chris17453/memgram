@@ -1,15 +1,6 @@
----
-title: Group Tools
-layout: default
-parent: Tools Reference
-nav_order: 5
----
-
 # Group Tools
 
 Four tools for creating and managing named clusters of related items.
-
----
 
 ## `create_group`
 
@@ -26,7 +17,7 @@ Create a named group to cluster related items (e.g., "authentication system").
 
 **Branch support:** Yes
 
-Group names are [normalized](../concepts/normalization), so `"Auth System"` and `"auth-system"` resolve to the same name.
+Group names are [normalized](../concepts/normalization.md), so `"Auth System"` and `"auth-system"` resolve to the same name.
 
 ### Example Request
 
@@ -37,22 +28,6 @@ Group names are [normalized](../concepts/normalization), so `"Auth System"` and 
   "project": "myapp"
 }
 ```
-
-### Example Response
-
-```json
-{
-  "id": "g1a2b3c4",
-  "name": "authsystem",
-  "description": "Everything about authentication",
-  "project": "myapp",
-  "branch": null,
-  "created_at": "2025-01-15T10:30:00+00:00",
-  "updated_at": "2025-01-15T10:30:00+00:00"
-}
-```
-
----
 
 ## `add_to_group`
 
@@ -66,18 +41,6 @@ Add a thought, rule, or error pattern to a group. Duplicate additions are ignore
 | `item_id` | string | **yes** | — | Item ID to add |
 | `item_type` | string | **yes** | — | `thought`, `rule`, or `error_pattern` |
 
-### Example Request
-
-```json
-{
-  "group_id": "g1a2b3c4",
-  "item_id": "t1b2c3d4",
-  "item_type": "thought"
-}
-```
-
----
-
 ## `remove_from_group`
 
 Remove an item from a group.
@@ -88,25 +51,6 @@ Remove an item from a group.
 |------|------|----------|---------|-------------|
 | `group_id` | string | **yes** | — | Group ID |
 | `item_id` | string | **yes** | — | Item ID to remove |
-
-### Example Request
-
-```json
-{
-  "group_id": "g1a2b3c4",
-  "item_id": "t1b2c3d4"
-}
-```
-
-### Example Response
-
-```json
-{
-  "removed": true
-}
-```
-
----
 
 ## `get_group`
 
@@ -142,13 +86,11 @@ Provide either `group_id` or `name` (with optional project/branch). If both are 
   "name": "authsystem",
   "description": "Everything about authentication",
   "project": "myapp",
-  "branch": null,
   "members": [
     {
       "group_id": "g1a2b3c4",
       "item_id": "t1b2c3d4",
       "item_type": "thought",
-      "added_at": "2025-01-15T10:35:00+00:00",
       "detail": {
         "id": "t1b2c3d4",
         "summary": "Using PKCE flow for OAuth",
@@ -159,7 +101,6 @@ Provide either `group_id` or `name` (with optional project/branch). If both are 
       "group_id": "g1a2b3c4",
       "item_id": "r4d5e6f7",
       "item_type": "rule",
-      "added_at": "2025-01-15T10:36:00+00:00",
       "detail": {
         "id": "r4d5e6f7",
         "summary": "Always use state param in OAuth",

@@ -1,15 +1,6 @@
----
-title: Knowledge Graph
-layout: default
-parent: Concepts
-nav_order: 4
----
-
 # Knowledge Graph
 
 Memgram builds a knowledge graph through three mechanisms: **links**, **groups**, and **pinning**. Together, they let you structure and retrieve related knowledge.
-
----
 
 ## Links
 
@@ -19,11 +10,11 @@ Links create directional connections between items (thoughts, rules, error patte
 
 | Type | Direction | Meaning |
 |------|-----------|---------|
-| `informs` | A → B | A provides context for B |
-| `contradicts` | A → B | A conflicts with B |
-| `supersedes` | A → B | A replaces B |
-| `related` | A ↔ B | General relationship |
-| `caused_by` | A → B | A was caused by B |
+| `informs` | A -> B | A provides context for B |
+| `contradicts` | A -> B | A conflicts with B |
+| `supersedes` | A -> B | A replaces B |
+| `related` | A <-> B | General relationship |
+| `caused_by` | A -> B | A was caused by B |
 
 ### Creating Links
 
@@ -41,8 +32,6 @@ Links create directional connections between items (thoughts, rules, error patte
 ### Retrieving Links
 
 `get_related(item_id)` returns all links where the item appears as either `from_id` or `to_id`.
-
----
 
 ## Groups
 
@@ -77,9 +66,7 @@ Groups cluster related items under a named label. A group can contain thoughts, 
 { "tool": "get_group", "name": "auth-system", "project": "myapp" }
 ```
 
-Group names are [normalized](normalization), so `"Auth System"` and `"auth-system"` resolve to the same group.
-
----
+Group names are [normalized](normalization.md), so `"Auth System"` and `"auth-system"` resolve to the same group.
 
 ## Pinning
 
@@ -96,34 +83,34 @@ Pinning applies to **thoughts** and **rules** only.
 ### Pinned Items in Resume Context
 
 When `get_resume_context()` is called, it returns:
+
 - All pinned thoughts (matching project/branch scope, plus `branch IS NULL`)
 - All pinned or critical rules (matching project/branch scope, plus `branch IS NULL`)
 
 ### Pinning Strategy
 
 Use pinning sparingly — only for truly critical, always-relevant knowledge:
+
 - Architecture decisions that affect every session
 - Critical security rules
 - Key project conventions
 
 Too many pinned items dilute the resume context and waste token budget.
 
----
-
 ## How They Work Together
 
 ```
-┌─────────────┐    link: caused_by    ┌─────────────┐
-│ Error Pattern│───────────────────────▶│    Rule      │
-│ "CSRF error" │                       │ "Use state   │
-└─────────────┘                       │  param"  📌  │
-       │                              └─────────────┘
-       │ member of                           │ member of
-       ▼                                     ▼
-┌─────────────────────────────────────────────────┐
-│              Group: "auth-system"                │
-│  Also contains: 3 thoughts, 2 other rules       │
-└─────────────────────────────────────────────────┘
++---------------+    link: caused_by    +---------------+
+| Error Pattern |---------------------->|    Rule       |
+| "CSRF error"  |                       | "Use state    |
++---------------+                       |  param"  (!)  |
+       |                                +---------------+
+       | member of                             | member of
+       v                                       v
++---------------------------------------------------+
+|              Group: "auth-system"                  |
+|  Also contains: 3 thoughts, 2 other rules         |
++---------------------------------------------------+
 ```
 
 - The error pattern is **linked** to the rule that prevents it

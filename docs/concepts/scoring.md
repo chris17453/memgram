@@ -1,25 +1,14 @@
----
-title: Scoring
-layout: default
-parent: Concepts
-nav_order: 3
----
-
 # Search Result Scoring
 
 Memgram uses a 5-factor scoring formula to rank search results. The formula combines text relevance with contextual signals to surface the most useful results.
 
----
-
 ## Formula
 
 ```
-score = (fts_rank × 0.4) + (recency × 0.2) + (access × 0.1) + (pinned × 0.2) + (severity × 0.1)
+score = (fts_rank x 0.4) + (recency x 0.2) + (access x 0.1) + (pinned x 0.2) + (severity x 0.1)
 ```
 
 Total maximum score: **1.0**
-
----
 
 ## Factors
 
@@ -84,8 +73,6 @@ Only applies to rules:
 
 Critical rules always surface when relevant.
 
----
-
 ## Which Items Use Scoring
 
 | Type | Scored? | Notes |
@@ -94,8 +81,6 @@ Critical rules always surface when relevant.
 | Rules | Yes | Full 5-factor formula (severity applies) |
 | Error patterns | Partial | FTS rank only (no access_count/pinned fields) |
 | Session summaries | Partial | FTS rank only |
-
----
 
 ## Scoring in Context
 

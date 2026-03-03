@@ -1,15 +1,6 @@
----
-title: Data Model
-layout: default
-nav_order: 6
-has_children: true
----
-
 # Data Model
 
 Memgram uses 12 core tables, 4 FTS5 virtual tables, and 1 sqlite-vec virtual table.
-
----
 
 ## Tables Overview
 
@@ -39,8 +30,6 @@ Memgram uses 12 core tables, 4 FTS5 virtual tables, and 1 sqlite-vec virtual tab
 | `session_summaries_fts` | FTS5 | Full-text search on session summaries (goal, outcome, hints) |
 | `embeddings_vec` | sqlite-vec | Vector similarity search (cosine distance) |
 
----
-
 ## Relationships
 
 ```
@@ -61,8 +50,6 @@ embedding_meta ──> thoughts | rules | error_patterns | session_summaries (it
 embeddings_vec ──> embedding_meta (item_id)
 ```
 
----
-
 ## Scoped Tables
 
 Seven tables have the `branch` column for two-dimensional scoping:
@@ -77,13 +64,12 @@ Seven tables have the `branch` column for two-dimensional scoping:
 | `thought_groups` | yes | yes |
 | `embedding_meta` | yes | yes |
 
-See [Scoping](../concepts/scoping) for how these columns affect retrieval.
-
----
+See [Scoping](../concepts/scoping.md) for how these columns affect retrieval.
 
 ## Indexes
 
 The database has indexes for:
+
 - `project` and `branch` columns (single and composite)
 - `pinned` columns (partial index where `pinned=1`)
 - `session_id` foreign keys
@@ -93,4 +79,4 @@ The database has indexes for:
 - `item_id` on group_members
 - `item_type` on embedding_meta
 
-See the [full schema reference](schema) for column-level details.
+See the [full schema reference](schema.md) for column-level details.

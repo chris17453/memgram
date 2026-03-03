@@ -1,35 +1,25 @@
----
-title: Architecture
-layout: default
-nav_order: 8
----
-
 # Architecture
 
 Memgram is structured as a layered system: CLI entry point, MCP server, tool dispatch, business logic, and database backend.
-
----
 
 ## File Structure
 
 ```
 src/memgram/
-├── server.py              # MCP server entry point (stdio) + CLI subcommands
-├── models.py              # Data models (dataclasses)
-├── utils.py               # ID generation, timestamps, name normalization
-├── export.py              # Markdown export (memgram export)
-├── db/
-│   ├── __init__.py        # create_db() factory
-│   ├── base.py            # DatabaseBackend ABC + MemgramDB business logic
-│   └── sqlite.py          # SQLite + FTS5 + sqlite-vec backend
-└── tools/
-    ├── __init__.py        # Tool registration & dispatch (normalization choke point)
-    ├── sessions.py        # Session management tool definitions
-    ├── knowledge.py       # Knowledge management tool definitions
-    └── search.py          # Search/retrieval/groups/maintenance tool definitions
+|-- server.py              # MCP server entry point (stdio) + CLI subcommands
+|-- models.py              # Data models (dataclasses)
+|-- utils.py               # ID generation, timestamps, name normalization
+|-- export.py              # Markdown export (memgram export)
+|-- db/
+|   |-- __init__.py        # create_db() factory
+|   |-- base.py            # DatabaseBackend ABC + MemgramDB business logic
+|   \-- sqlite.py          # SQLite + FTS5 + sqlite-vec backend
+\-- tools/
+    |-- __init__.py        # Tool registration & dispatch (normalization choke point)
+    |-- sessions.py        # Session management tool definitions
+    |-- knowledge.py       # Knowledge management tool definitions
+    \-- search.py          # Search/retrieval/groups/maintenance tool definitions
 ```
-
----
 
 ## Layers
 
@@ -50,13 +40,14 @@ Global flags like `--db-path` go before the subcommand. Subcommand flags like `-
 
 This is the **normalization choke point** for the entire system. All tool calls flow through `_call_module_handler()`, which:
 
-1. Normalizes `project` values (e.g., `"My-App"` → `"myapp"`)
-2. Normalizes `branch` values (e.g., `"feature/auth-flow"` → `"featureauthflow"`)
+1. Normalizes `project` values (e.g., `"My-App"` -> `"myapp"`)
+2. Normalizes `branch` values (e.g., `"feature/auth-flow"` -> `"featureauthflow"`)
 3. Normalizes `keywords` arrays (each keyword normalized)
 4. Normalizes group `name` values
 5. Dispatches to the appropriate module handler
 
 Tool definitions live in three modules:
+
 - `sessions.py` — 4 session management tools
 - `knowledge.py` — 6 knowledge management tools
 - `search.py` — 14 search, retrieval, group, and maintenance tools
@@ -68,6 +59,7 @@ Each module exports a `TOOLS` list (MCP `Tool` objects with JSON schemas) and a 
 `MemgramDB` contains all business logic — scoring, resume context assembly, search aggregation. It delegates raw SQL to a `DatabaseBackend` instance.
 
 Key methods:
+
 - `_compute_score()` — the 5-factor scoring formula used for search ranking
 - `get_resume_context()` — assembles everything an AI needs to resume work
 - `search()` — unified FTS search across all tables with scoring
@@ -76,13 +68,12 @@ Key methods:
 ### Database Backend (`db/sqlite.py`)
 
 `SQLiteBackend` implements the `DatabaseBackend` ABC with:
+
 - **SQLite** for storage (WAL mode, foreign keys)
 - **FTS5** for full-text search (with triggers for automatic indexing)
 - **sqlite-vec** for vector similarity search (cosine distance)
 
 Schema initialization is idempotent — tables, FTS virtual tables, triggers, and indexes are all `CREATE IF NOT EXISTS`. The `_migrate_add_branch()` method adds the `branch` column to existing databases.
-
----
 
 ## Backend Abstraction
 
@@ -98,34 +89,30 @@ The `DatabaseBackend` ABC defines the interface that all backends must implement
 
 This abstraction allows adding PostgreSQL/pgvector or other backends without changing any business logic.
 
----
-
 ## Dispatch Pipeline
 
 ```
 AI Client (stdio)
-    │
-    ▼
+    |
+    v
 MCP Server (server.py)
-    │
-    ▼
+    |
+    v
 Tool Dispatcher (tools/__init__.py)
-    ├── Normalize project, branch, keywords, group names
-    └── Route to module handler
-         │
-         ▼
+    |-- Normalize project, branch, keywords, group names
+    \-- Route to module handler
+         |
+         v
     MemgramDB (db/base.py)
-    ├── Business logic (scoring, context assembly)
-    └── Delegate SQL to backend
-         │
-         ▼
+    |-- Business logic (scoring, context assembly)
+    \-- Delegate SQL to backend
+         |
+         v
     SQLiteBackend (db/sqlite.py)
-    ├── SQLite + WAL
-    ├── FTS5 full-text search
-    └── sqlite-vec vector search
+    |-- SQLite + WAL
+    |-- FTS5 full-text search
+    \-- sqlite-vec vector search
 ```
-
----
 
 ## Extension Points
 

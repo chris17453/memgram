@@ -1,0 +1,65 @@
+site_name: Memgram
+site_description: AI Memory Graph — persistent memory layer for AI assistants via MCP
+site_url: https://chris17453.github.io/memgram/
+repo_url: https://github.com/chris17453/memgram
+repo_name: chris17453/memgram
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: deep purple
+    accent: amber
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - attr_list
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Concepts:
+    - concepts/index.md
+    - Scoping: concepts/scoping.md
+    - Normalization: concepts/normalization.md
+    - Scoring: concepts/scoring.md
+    - Knowledge Graph: concepts/knowledge-graph.md
+  - Configuration:
+    - configuration/index.md
+    - CLI Reference: configuration/cli.md
+    - MCP Client Setup: configuration/mcp-clients.md
+  - Tools Reference:
+    - tools/index.md
+    - Session Tools: tools/sessions.md
+    - Knowledge Tools: tools/knowledge.md
+    - Search Tools: tools/search.md
+    - Project Tools: tools/projects.md
+    - Group Tools: tools/groups.md
+    - Maintenance Tools: tools/maintenance.md
+  - Data Model:
+    - data-model/index.md
+    - Schema Reference: data-model/schema.md
+  - Guides:
+    - guides/index.md
+    - AI Instructions: guides/ai-instructions.md
+    - Session Workflow: guides/session-workflow.md
+    - Branch Workflow: guides/branch-workflow.md
+    - Export: guides/export.md
+  - Architecture: architecture.md

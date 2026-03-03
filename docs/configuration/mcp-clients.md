@@ -1,15 +1,6 @@
----
-title: MCP Client Setup
-layout: default
-parent: Configuration
-nav_order: 2
----
-
 # MCP Client Configuration
 
 Memgram works with any MCP-compatible AI client. Below are configuration examples for the most common clients.
-
----
 
 ## Copilot CLI / VS Code
 
@@ -28,8 +19,6 @@ Add to your MCP settings (`.vscode/mcp.json` or global settings):
   }
 }
 ```
-
----
 
 ## Claude Desktop
 
@@ -53,8 +42,6 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
----
-
 ## Claude Code
 
 Add to `.claude/settings.json` (global) or project-level `.mcp.json`:
@@ -72,8 +59,6 @@ Add to `.claude/settings.json` (global) or project-level `.mcp.json`:
   }
 }
 ```
-
----
 
 ## Notes
 

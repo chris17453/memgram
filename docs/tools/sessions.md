@@ -1,15 +1,6 @@
----
-title: Session Tools
-layout: default
-parent: Tools Reference
-nav_order: 1
----
-
 # Session Tools
 
 Four tools for managing the session lifecycle: start, snapshot, resume, and end.
-
----
 
 ## `start_session`
 
@@ -54,16 +45,14 @@ Begin a new memgram session. Call this at the beginning of every conversation. R
     "started_at": "2025-01-15T10:30:00+00:00"
   },
   "resume_context": {
-    "last_session": { "..." : "..." },
-    "last_snapshot": { "..." : "..." },
+    "last_session": { "...": "..." },
+    "last_snapshot": { "...": "..." },
     "pinned_thoughts": [],
     "active_rules": [],
-    "project_summary": { "..." : "..." }
+    "project_summary": { "...": "..." }
   }
 }
 ```
-
----
 
 ## `end_session`
 
@@ -96,8 +85,6 @@ End the current session with a summary. Creates a structured session summary rec
 }
 ```
 
----
-
 ## `save_snapshot`
 
 Save a compaction checkpoint. Call this BEFORE context compaction to preserve state. Records current goal, progress, blockers, and next steps so the AI can resume seamlessly.
@@ -126,8 +113,6 @@ Save a compaction checkpoint. Call this BEFORE context compaction to preserve st
   "active_files": ["src/auth/oauth.py"]
 }
 ```
-
----
 
 ## `get_resume_context`
 

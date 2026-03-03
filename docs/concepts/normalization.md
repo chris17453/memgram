@@ -1,15 +1,6 @@
----
-title: Normalization
-layout: default
-parent: Concepts
-nav_order: 2
----
-
 # Name Normalization
 
 Memgram normalizes `project`, `branch`, `keywords`, and group `name` values to ensure consistent matching regardless of formatting.
-
----
 
 ## Algorithm
 
@@ -22,8 +13,6 @@ The normalization function (`normalize_name` in `utils.py`):
 def normalize_name(value: str) -> str:
     return re.sub(r'[^a-z0-9]', '', value.lower())
 ```
-
----
 
 ## Examples
 
@@ -38,8 +27,6 @@ def normalize_name(value: str) -> str:
 | `My App` | `myapp` |
 | `fix/login-bug` | `fixloginbug` |
 
----
-
 ## Where Normalization Applies
 
 Normalization happens in the **tool dispatch layer** (`tools/__init__.py`), which acts as a choke point for all incoming tool calls. The following fields are normalized before reaching business logic:
@@ -52,8 +39,6 @@ Normalization happens in the **tool dispatch layer** (`tools/__init__.py`), whic
 | Group `name` | Yes | `create_group`, `get_group` |
 | `agent_type` | No | Stored as-is |
 | `summary` | No | Stored as-is (searchable via FTS) |
-
----
 
 ## Implications
 

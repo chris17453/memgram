@@ -1,22 +1,12 @@
----
-title: Getting Started
-layout: default
-nav_order: 2
----
-
 # Getting Started
 
 This guide walks you through installing memgram, configuring it with your AI client, and running your first session.
-
----
 
 ## Prerequisites
 
 - **Python 3.10+**
 - **[uv](https://docs.astral.sh/uv/)** package manager (recommended) or pip
 - An MCP-compatible AI client (VS Code/Copilot, Claude Desktop, Claude Code, Cursor)
-
----
 
 ## Installation
 
@@ -27,8 +17,6 @@ uv add memgram
 # Or with pip
 pip install memgram
 ```
-
----
 
 ## Running the Server
 
@@ -50,11 +38,9 @@ memgram serve --embedding-dim 1536
 
 The database is created automatically at `~/.memgram/memgram.db` on first run.
 
----
-
 ## MCP Client Setup
 
-Add memgram to your AI client's MCP configuration. See the [MCP Clients](configuration/mcp-clients) page for full configs.
+Add memgram to your AI client's MCP configuration. See the [MCP Clients](configuration/mcp-clients.md) page for full configs.
 
 **Quick example (Claude Code):**
 
@@ -71,8 +57,6 @@ Add memgram to your AI client's MCP configuration. See the [MCP Clients](configu
   }
 }
 ```
-
----
 
 ## First Session Walkthrough
 
@@ -99,13 +83,8 @@ This returns a session ID and any existing resume context (empty on first run).
 As the AI makes decisions and observations, it stores them:
 
 ```json
-// Record a decision
 { "tool": "add_thought", "summary": "Using FastAPI for the REST API", "type": "decision" }
-
-// Record a rule
 { "tool": "add_rule", "summary": "Always use type hints", "type": "do", "severity": "critical" }
-
-// Record an error fix
 { "tool": "add_error_pattern", "error_description": "Import failed", "cause": "Missing dep", "fix": "Added to pyproject.toml" }
 ```
 
@@ -138,10 +117,8 @@ When the context window gets long:
 
 When a new conversation starts, `start_session` returns the previous session summary, last snapshot, pinned items, and active rules — so the AI has full context.
 
----
-
 ## Next Steps
 
-- Learn about [scoping](concepts/scoping) to organize knowledge by project and branch
-- See the full [tools reference](tools/) for all 24 tools
-- Read the [AI instructions guide](guides/ai-instructions) for the complete agent usage guide
+- Learn about [scoping](concepts/scoping.md) to organize knowledge by project and branch
+- See the full [tools reference](tools/index.md) for all 24 tools
+- Read the [AI instructions guide](guides/ai-instructions.md) for the complete agent usage guide

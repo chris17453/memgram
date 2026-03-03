@@ -1,15 +1,6 @@
----
-title: Branch Workflow
-layout: default
-parent: Guides
-nav_order: 3
----
-
 # Branch Workflow
 
 Patterns for using memgram's branch scoping in feature-branch development.
-
----
 
 ## The Concept
 
@@ -17,20 +8,18 @@ Branch scoping lets you isolate knowledge per git branch while keeping project-w
 
 ```
 Project: "myapp"
-├── branch: NULL (project-wide)
-│   ├── Rule: "Always use type hints" (critical)
-│   ├── Rule: "Prefer composition over inheritance"
-│   └── Thought: "Using FastAPI for REST API" (decision)
-├── branch: "featureauth"
-│   ├── Thought: "Using PKCE flow for OAuth" (decision)
-│   ├── Error: "CSRF error from missing state param"
-│   └── Rule: "Reset tokens expire in 1 hour" (critical)
-└── branch: "fixloginbug"
-    ├── Thought: "Bug was in session validation logic"
-    └── Error: "Session cookie not set with SameSite"
+|-- branch: NULL (project-wide)
+|   |-- Rule: "Always use type hints" (critical)
+|   |-- Rule: "Prefer composition over inheritance"
+|   \-- Thought: "Using FastAPI for REST API" (decision)
+|-- branch: "featureauth"
+|   |-- Thought: "Using PKCE flow for OAuth" (decision)
+|   |-- Error: "CSRF error from missing state param"
+|   \-- Rule: "Reset tokens expire in 1 hour" (critical)
+\-- branch: "fixloginbug"
+    |-- Thought: "Bug was in session validation logic"
+    \-- Error: "Session cookie not set with SameSite"
 ```
-
----
 
 ## Starting a Branch Session
 
@@ -48,12 +37,11 @@ Always pass both `project` and `branch` when starting work on a feature:
 ```
 
 The resume context will include:
+
 - Last session on this **specific branch**
 - Pinned thoughts from this branch **plus** project-global pinned thoughts
 - Critical rules from this branch **plus** project-global critical rules
 - Project summary (always project-level)
-
----
 
 ## Deciding Scope for New Items
 
@@ -73,6 +61,7 @@ Use for knowledge that only matters on this branch:
 ```
 
 Good candidates for branch scoping:
+
 - Branch-specific decisions and workarounds
 - Debugging notes for branch-specific issues
 - Error patterns unique to the branch's changes
@@ -94,12 +83,11 @@ Use for knowledge that applies to all branches:
 ```
 
 Good candidates for project scope:
+
 - Coding standards and conventions
 - Architecture decisions
 - Security rules
 - Technology choices
-
----
 
 ## Search Behavior by Branch
 
@@ -125,8 +113,6 @@ This ensures project-wide rules always surface.
 // To search project-wide, omit branch
 { "tool": "search", "query": "oauth", "project": "myapp" }
 ```
-
----
 
 ## After Branch Merge
 
@@ -155,8 +141,6 @@ If a branch-scoped rule should become project-wide:
 { "tool": "archive_item", "item_id": "old-branch-rule-id" }
 ```
 
----
-
 ## Example: Full Branch Lifecycle
 
 ```
@@ -181,5 +165,5 @@ If a branch-scoped rule should become project-wide:
 9. Branch merges to main
 10. Promote important rules to project scope:
     - add_rule("Always use idempotency keys for Stripe", project="myapp")
-    ← no branch = visible on all branches now
+      (no branch = visible on all branches now)
 ```

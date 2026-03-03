@@ -1,26 +1,15 @@
----
-title: AI Instructions
-layout: default
-parent: Guides
-nav_order: 1
----
-
 # AI Agent Usage Guide
 
 This is the complete guide for AI assistants using memgram. Add this to your AI's system prompt or instructions file.
 
-{: .note }
-This guide is the formatted version of `INSTRUCTIONS.md` from the repository root.
-
----
+!!! note
+    This guide is the formatted version of `INSTRUCTIONS.md` from the repository root.
 
 ## Core Principle
 
 **Record everything worth remembering. Search before deciding. Resume where you left off.**
 
 You are not just a consumer of memgram — you are its curator. The quality of your future context depends on what you store now.
-
----
 
 ## Session Lifecycle
 
@@ -79,8 +68,6 @@ When the task is done or the conversation is ending, call `end_session` with:
 - `unresolved_items`: anything left open
 - `next_session_hints`: what the next AI should know/do
 
----
-
 ## What to Record
 
 ### Thoughts
@@ -126,13 +113,11 @@ add_error_pattern(
   keywords: ["build", "dependencies", "uv"]
   associated_files: ["pyproject.toml"]
   project: "myapp"
-  branch: "feature/auth"  ← optional
+  branch: "feature/auth"
 )
 ```
 
 If you create a rule to prevent recurrence, link them with `prevention_rule_id`.
-
----
 
 ## How to Search
 
@@ -156,8 +141,6 @@ search(query="authentication approach", project="myapp", branch="feature/auth")
 | Get clustered knowledge | `get_group` | `get_group(name="auth-system", project="myapp")` |
 | Project overview | `get_project_summary` | `get_project_summary(project="myapp")` |
 | Semantic similarity | `search_by_embedding` | Pass embedding vector for nearest-neighbor search |
-
----
 
 ## Organizing Knowledge
 
@@ -192,8 +175,6 @@ pin_item(item_id="rule-id")  # Now included in every get_resume_context
 
 Use sparingly — only for truly critical, always-relevant knowledge.
 
----
-
 ## Project Summaries
 
 Keep a living overview of each project:
@@ -210,23 +191,20 @@ update_project_summary(
 
 Update this periodically — especially when goals change or the tech stack evolves.
 
----
-
 ## Keywords Matter
 
 Good keywords make knowledge findable. Always include:
+
 - **Domain terms**: auth, database, api, testing, deployment
 - **Technology terms**: python, jwt, sqlalchemy, react
 - **Action terms**: migration, refactor, debug, optimize
 - **Specific identifiers**: function names, file names, error codes
 
----
-
 ## Quick Reference
 
 | When | Call |
 |------|------|
-| Conversation starts | `start_session` → read resume context → `get_rules` |
+| Conversation starts | `start_session` -> read resume context -> `get_rules` |
 | Made a decision | `add_thought(type="decision")` |
 | Learned a do/don't | `add_rule` |
 | Something broke & was fixed | `add_error_pattern` |

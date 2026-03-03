@@ -1,31 +1,18 @@
----
-title: Session Workflow
-layout: default
-parent: Guides
-nav_order: 2
----
-
 # Session Workflow
 
 The complete lifecycle of a memgram session: start, work, snapshot, and end.
 
----
-
 ## Overview
 
 ```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│  START   │───▶│   WORK   │───▶│ SNAPSHOT │───▶│   END    │
-│ Session  │    │ & Record │    │ (repeat) │    │ Session  │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘
-      │               │               │               │
-      ▼               ▼               ▼               ▼
-  Resume ctx     Thoughts,      Compaction       Session
-  loaded         Rules,         checkpoint       summary
-                 Errors                          created
+ START  ------->  WORK  -------> SNAPSHOT ------->  END
+Session          & Record        (repeat)          Session
+   |                |               |                |
+   v                v               v                v
+Resume ctx     Thoughts,       Compaction        Session
+loaded         Rules,          checkpoint        summary
+               Errors                            created
 ```
-
----
 
 ## Step 1: Start Session
 
@@ -42,6 +29,7 @@ Call `start_session` at the very beginning of every conversation.
 ```
 
 **What happens:**
+
 1. A new session record is created (status: `active`)
 2. Resume context is assembled and returned:
    - Last session on this project/branch
@@ -52,12 +40,11 @@ Call `start_session` at the very beginning of every conversation.
    - Project summary
 
 **What to do next:**
+
 - Read the entire resume context
 - Call `get_rules` for additional rules relevant to your work
 - Check `next_steps` from the last snapshot
 - Review `next_session_hints` from the last session summary
-
----
 
 ## Step 2: Work & Record
 
@@ -116,8 +103,6 @@ Before making significant decisions, search first:
 { "tool": "get_rules", "project": "myapp", "keywords": ["auth", "security"] }
 ```
 
----
-
 ## Step 3: Snapshot (Before Compaction)
 
 When the context window is getting long and compaction is approaching, save a snapshot:
@@ -141,14 +126,13 @@ When the context window is getting long and compaction is approaching, save a sn
 ```
 
 **Key points:**
+
 - Snapshots auto-increment `sequence_num` within a session
 - The session's `compaction_count` is incremented
 - Be thorough — this snapshot is what the next context loads
 - Order `next_steps` by priority
 
 You can save multiple snapshots per session. Each one captures the state at that point.
-
----
 
 ## Step 4: End Session
 
@@ -179,33 +163,32 @@ When the task is done or the conversation is ending:
 ```
 
 **What happens:**
+
 1. Session status changes to `completed`
 2. A structured `session_summary` record is created
 3. If a project is set, project summary counts are updated
-
----
 
 ## Putting It All Together
 
 ```
 Session #1: "Add OAuth login"
-├── start_session → gets empty resume (first session)
-├── add_thought: "Using PKCE flow" (decision)
-├── add_rule: "Always use state param" (critical)
-├── add_error_pattern: "CSRF error → missing state"
-├── save_snapshot: progress + next steps
-└── end_session: summary + hints for next session
+|-- start_session -> gets empty resume (first session)
+|-- add_thought: "Using PKCE flow" (decision)
+|-- add_rule: "Always use state param" (critical)
+|-- add_error_pattern: "CSRF error -> missing state"
+|-- save_snapshot: progress + next steps
+\-- end_session: summary + hints for next session
 
 Session #2: "Add GitHub OAuth provider"
-├── start_session → gets resume from session #1
-│   ├── Sees: "OAuth working with Google"
-│   ├── Sees: "Always use state param" (rule)
-│   └── Sees: next_steps from snapshot
-├── get_rules → loads all auth rules
-├── search("oauth provider") → finds session #1 decisions
-├── ... work ...
-├── save_snapshot
-└── end_session
+|-- start_session -> gets resume from session #1
+|   |-- Sees: "OAuth working with Google"
+|   |-- Sees: "Always use state param" (rule)
+|   \-- Sees: next_steps from snapshot
+|-- get_rules -> loads all auth rules
+|-- search("oauth provider") -> finds session #1 decisions
+|-- ... work ...
+|-- save_snapshot
+\-- end_session
 ```
 
 Each session builds on the previous one. Knowledge accumulates and surfaces automatically.

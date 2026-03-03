@@ -1,15 +1,6 @@
----
-title: CLI Reference
-layout: default
-parent: Configuration
-nav_order: 1
----
-
 # CLI Reference
 
 Memgram provides two subcommands: `serve` (default) and `export`.
-
----
 
 ## Usage
 
@@ -19,15 +10,11 @@ memgram [--db-path PATH] <command> [options]
 
 Global flags go **before** the subcommand. Subcommand-specific flags go **after**.
 
----
-
 ## Global Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--db-path PATH` | `~/.memgram/memgram.db` | Path to the SQLite database |
-
----
 
 ## Subcommands
 
@@ -47,6 +34,7 @@ memgram --db-path /tmp/test.db serve
 | `--embedding-dim N` | `384` | Embedding vector dimensions for sqlite-vec |
 
 The embedding dimension should match your embedding model:
+
 - `384` — all-MiniLM-L6-v2 (default)
 - `1536` — OpenAI text-embedding-3-small
 - `3072` — OpenAI text-embedding-3-large
@@ -65,9 +53,7 @@ memgram --db-path /tmp/test.db export -o ./my-export
 |------|---------|-------------|
 | `-o`, `--output DIR` | `memgram-export` | Output directory |
 
-See the [Export guide](../guides/export) for details on the output structure.
-
----
+See the [Export guide](../guides/export.md) for details on the output structure.
 
 ## Environment Variables
 
@@ -78,13 +64,12 @@ See the [Export guide](../guides/export) for details on the output structure.
 
 Environment variables are checked at startup. CLI flags take precedence.
 
----
-
 ## Database Location
 
 The default database path is `~/.memgram/memgram.db`. The parent directory is created automatically on first run.
 
 Priority order:
+
 1. `--db-path` CLI flag (highest)
 2. `MEMGRAM_DB_PATH` environment variable
 3. `~/.memgram/memgram.db` (default)

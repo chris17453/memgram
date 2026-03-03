@@ -1,15 +1,6 @@
----
-title: Knowledge Tools
-layout: default
-parent: Tools Reference
-nav_order: 2
----
-
 # Knowledge Tools
 
 Six tools for storing and connecting knowledge: thoughts, rules, error patterns, and links.
-
----
 
 ## `add_thought`
 
@@ -57,8 +48,6 @@ Store a thought, observation, decision, idea, or note. Use this to record anythi
 }
 ```
 
----
-
 ## `update_thought`
 
 Update an existing thought's fields.
@@ -79,8 +68,6 @@ Update an existing thought's fields.
 | `archived` | boolean | no | — | Set archive status |
 
 Only provided fields are updated. Omitted fields remain unchanged.
-
----
 
 ## `add_rule`
 
@@ -128,8 +115,6 @@ Store a learned rule — something to always do, never do, or do in specific con
 }
 ```
 
----
-
 ## `reinforce_rule`
 
 Reinforce a rule — bump its confidence when you encounter another case that confirms it. Higher reinforcement count means higher priority in search results.
@@ -151,8 +136,6 @@ Reinforce a rule — bump its confidence when you encounter another case that co
 ```
 
 The note is appended to the rule's `content` with a timestamp.
-
----
 
 ## `add_error_pattern`
 
@@ -186,8 +169,6 @@ Log a failure pattern: what went wrong, why, how it was fixed. Optionally link t
   "keywords": ["auth", "oauth", "csrf"]
 }
 ```
-
----
 
 ## `link_items`
 

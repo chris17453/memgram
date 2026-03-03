@@ -1,19 +1,10 @@
----
-title: Search Tools
-layout: default
-parent: Tools Reference
-nav_order: 3
----
-
 # Search & Retrieval Tools
 
 Six tools for finding and retrieving knowledge: full-text search, vector search, rule lookup, session history, and graph traversal.
 
----
-
 ## `search`
 
-Unified full-text search across thoughts, rules, error patterns, and session summaries. Results are ranked by the [scoring formula](../concepts/scoring).
+Unified full-text search across thoughts, rules, error patterns, and session summaries. Results are ranked by the [scoring formula](../concepts/scoring.md).
 
 ### Parameters
 
@@ -65,8 +56,6 @@ Unified full-text search across thoughts, rules, error patterns, and session sum
 }
 ```
 
----
-
 ## `search_by_embedding`
 
 RAG-style semantic search using vector similarity. Requires embeddings to have been stored via `store_embedding`. Returns items ranked by cosine distance.
@@ -84,8 +73,6 @@ RAG-style semantic search using vector similarity. Requires embeddings to have b
 **Branch support:** Yes (exact match on embedding metadata)
 
 Returns items with `_distance` (cosine distance) and `_score` (`1.0 - distance`).
-
----
 
 ## `store_embedding`
 
@@ -108,12 +95,10 @@ Store a vector embedding for an item (thought, rule, error pattern, session summ
   "item_id": "t1b2c3",
   "item_type": "thought",
   "text_content": "Using PKCE flow for OAuth authentication",
-  "embedding": [0.123, -0.456, 0.789, "..."],
+  "embedding": [0.123, -0.456, 0.789],
   "model_name": "all-MiniLM-L6-v2"
 }
 ```
-
----
 
 ## `get_rules`
 
@@ -163,8 +148,6 @@ Get active rules for a project/context. Always includes critical rules. Filter b
 }
 ```
 
----
-
 ## `get_session_history`
 
 List past sessions with summaries, ordered by most recent.
@@ -180,18 +163,6 @@ List past sessions with summaries, ordered by most recent.
 
 **Branch support:** Yes (exact match)
 
-### Example Request
-
-```json
-{
-  "project": "myapp",
-  "branch": "feature/auth",
-  "limit": 5
-}
-```
-
----
-
 ## `get_related`
 
 Get all items linked to a given thought or rule via the knowledge graph (`thought_links` table).
@@ -203,14 +174,6 @@ Get all items linked to a given thought or rule via the knowledge graph (`though
 | `item_id` | string | **yes** | — | ID of the item to find links for |
 
 Returns all links where the item appears as either `from_id` or `to_id`, with link type and direction.
-
-### Example Request
-
-```json
-{
-  "item_id": "t1b2c3"
-}
-```
 
 ### Example Response
 

@@ -1,15 +1,6 @@
----
-title: Schema Reference
-layout: default
-parent: Data Model
-nav_order: 1
----
-
 # Schema Reference
 
 Full column-level schema for all memgram tables.
-
----
 
 ## `sessions`
 
@@ -30,14 +21,12 @@ Full column-level schema for all memgram tables.
 
 **Indexes:** `project`, `branch`, `status`, `(project, branch)`
 
----
-
 ## `thoughts`
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | TEXT | **PK** | — | UUID hex (12 chars) |
-| `session_id` | TEXT | yes | `NULL` | FK → sessions(id) |
+| `session_id` | TEXT | yes | `NULL` | FK -> sessions(id) |
 | `type` | TEXT | NOT NULL | `'note'` | `observation`, `decision`, `idea`, `error`, `pattern`, `note` |
 | `summary` | TEXT | NOT NULL | — | Short searchable summary |
 | `content` | TEXT | NOT NULL | `''` | Full content |
@@ -54,14 +43,12 @@ Full column-level schema for all memgram tables.
 
 **Indexes:** `project`, `branch`, `session_id`, `pinned` (partial), `(project, branch)`
 
----
-
 ## `rules`
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | TEXT | **PK** | — | UUID hex (12 chars) |
-| `session_id` | TEXT | yes | `NULL` | FK → sessions(id) |
+| `session_id` | TEXT | yes | `NULL` | FK -> sessions(id) |
 | `type` | TEXT | NOT NULL | `'do'` | `do`, `dont`, `context_dependent` |
 | `severity` | TEXT | NOT NULL | `'preference'` | `critical`, `preference`, `context_dependent` |
 | `summary` | TEXT | NOT NULL | — | Short rule description |
@@ -80,14 +67,12 @@ Full column-level schema for all memgram tables.
 
 **Indexes:** `project`, `branch`, `session_id`, `severity`, `pinned` (partial), `(project, branch)`
 
----
-
 ## `compaction_snapshots`
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | TEXT | **PK** | — | UUID hex |
-| `session_id` | TEXT | NOT NULL | — | FK → sessions(id) |
+| `session_id` | TEXT | NOT NULL | — | FK -> sessions(id) |
 | `sequence_num` | INTEGER | NOT NULL | `1` | Auto-incrementing per session |
 | `current_goal` | TEXT | yes | `NULL` | Current work goal |
 | `progress_summary` | TEXT | yes | `NULL` | What's done so far |
@@ -99,8 +84,6 @@ Full column-level schema for all memgram tables.
 | `created_at` | TEXT | NOT NULL | — | ISO 8601 UTC |
 
 **Indexes:** `session_id`
-
----
 
 ## `thought_links`
 
@@ -116,18 +99,16 @@ Full column-level schema for all memgram tables.
 
 **Indexes:** `from_id`, `to_id`
 
----
-
 ## `error_patterns`
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | TEXT | **PK** | — | UUID hex |
-| `session_id` | TEXT | yes | `NULL` | FK → sessions(id) |
+| `session_id` | TEXT | yes | `NULL` | FK -> sessions(id) |
 | `error_description` | TEXT | NOT NULL | — | What went wrong |
 | `cause` | TEXT | yes | `NULL` | Root cause |
 | `fix` | TEXT | yes | `NULL` | How it was fixed |
-| `prevention_rule_id` | TEXT | yes | `NULL` | FK → rules(id) |
+| `prevention_rule_id` | TEXT | yes | `NULL` | FK -> rules(id) |
 | `project` | TEXT | yes | `NULL` | Project tag (normalized) |
 | `branch` | TEXT | yes | `NULL` | Branch name (normalized) |
 | `keywords` | TEXT | NOT NULL | `'[]'` | JSON array |
@@ -135,8 +116,6 @@ Full column-level schema for all memgram tables.
 | `created_at` | TEXT | NOT NULL | — | ISO 8601 UTC |
 
 **Indexes:** `project`, `branch`
-
----
 
 ## `project_summaries`
 
@@ -154,14 +133,12 @@ Full column-level schema for all memgram tables.
 | `created_at` | TEXT | NOT NULL | — | ISO 8601 UTC |
 | `updated_at` | TEXT | NOT NULL | — | ISO 8601 UTC |
 
----
-
 ## `session_summaries`
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | TEXT | **PK** | — | UUID hex |
-| `session_id` | TEXT | NOT NULL, UNIQUE | — | FK → sessions(id) |
+| `session_id` | TEXT | NOT NULL, UNIQUE | — | FK -> sessions(id) |
 | `project` | TEXT | yes | `NULL` | Project tag (normalized) |
 | `branch` | TEXT | yes | `NULL` | Branch name (normalized) |
 | `goal` | TEXT | yes | `NULL` | Session goal |
@@ -175,8 +152,6 @@ Full column-level schema for all memgram tables.
 | `created_at` | TEXT | NOT NULL | — | ISO 8601 UTC |
 
 **Indexes:** `branch`
-
----
 
 ## `thought_groups`
 
@@ -192,13 +167,11 @@ Full column-level schema for all memgram tables.
 
 **Indexes:** `branch`
 
----
-
 ## `group_members`
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
-| `group_id` | TEXT | NOT NULL | — | FK → thought_groups(id) |
+| `group_id` | TEXT | NOT NULL | — | FK -> thought_groups(id) |
 | `item_id` | TEXT | NOT NULL | — | Item ID (polymorphic) |
 | `item_type` | TEXT | NOT NULL | — | `thought`, `rule`, `error_pattern` |
 | `added_at` | TEXT | NOT NULL | — | ISO 8601 UTC |
@@ -206,8 +179,6 @@ Full column-level schema for all memgram tables.
 **Primary Key:** `(group_id, item_id)`
 
 **Indexes:** `item_id`
-
----
 
 ## `embedding_meta`
 
@@ -223,8 +194,6 @@ Full column-level schema for all memgram tables.
 
 **Indexes:** `item_type`, `branch`
 
----
-
 ## `embeddings_vec` (sqlite-vec)
 
 | Column | Type | Description |
@@ -234,32 +203,22 @@ Full column-level schema for all memgram tables.
 
 Created as: `CREATE VIRTUAL TABLE embeddings_vec USING vec0(item_id TEXT PRIMARY KEY, embedding float[384])`
 
----
-
 ## FTS5 Virtual Tables
 
 ### `thoughts_fts`
 
-Columns indexed: `id` (UNINDEXED), `summary`, `content`, `keywords`
-
-Content table: `thoughts`
+Columns indexed: `id` (UNINDEXED), `summary`, `content`, `keywords`. Content table: `thoughts`.
 
 ### `rules_fts`
 
-Columns indexed: `id` (UNINDEXED), `summary`, `content`, `keywords`
-
-Content table: `rules`
+Columns indexed: `id` (UNINDEXED), `summary`, `content`, `keywords`. Content table: `rules`.
 
 ### `error_patterns_fts`
 
-Columns indexed: `id` (UNINDEXED), `error_description`, `cause`, `fix`, `keywords`
-
-Content table: `error_patterns`
+Columns indexed: `id` (UNINDEXED), `error_description`, `cause`, `fix`, `keywords`. Content table: `error_patterns`.
 
 ### `session_summaries_fts`
 
-Columns indexed: `id` (UNINDEXED), `goal`, `outcome`, `next_session_hints`
-
-Content table: `session_summaries`
+Columns indexed: `id` (UNINDEXED), `goal`, `outcome`, `next_session_hints`. Content table: `session_summaries`.
 
 All FTS tables use `content='<table>'` and `content_rowid='rowid'` with automatic sync triggers (INSERT, UPDATE, DELETE).
