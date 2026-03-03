@@ -12,6 +12,7 @@ class Session:
     agent_type: str
     model: str
     project: Optional[str] = None
+    branch: Optional[str] = None
     goal: Optional[str] = None
     status: str = "active"
     summary: Optional[str] = None
@@ -29,6 +30,7 @@ class Thought:
     summary: str = ""
     content: str = ""
     project: Optional[str] = None
+    branch: Optional[str] = None
     keywords: str = "[]"  # JSON array
     associated_files: str = "[]"  # JSON array
     pinned: int = 0
@@ -49,6 +51,7 @@ class Rule:
     content: str = ""
     condition: Optional[str] = None
     project: Optional[str] = None
+    branch: Optional[str] = None
     keywords: str = "[]"
     associated_files: str = "[]"
     pinned: int = 0
@@ -94,6 +97,7 @@ class ErrorPattern:
     fix: Optional[str] = None
     prevention_rule_id: Optional[str] = None
     project: Optional[str] = None
+    branch: Optional[str] = None
     keywords: str = "[]"
     associated_files: str = "[]"
     created_at: Optional[str] = None
@@ -119,6 +123,7 @@ class SessionSummary:
     id: str
     session_id: str
     project: Optional[str] = None
+    branch: Optional[str] = None
     goal: Optional[str] = None
     outcome: Optional[str] = None
     decisions_made: str = "[]"
@@ -136,6 +141,7 @@ class ThoughtGroup:
     name: str
     description: str = ""
     project: Optional[str] = None
+    branch: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

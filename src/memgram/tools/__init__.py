@@ -51,6 +51,8 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
     # e.g. 'oxide-os', 'oxide_os', 'OxideOS' all become 'oxideos'.
     if "project" in args and args["project"] is not None:
         args["project"] = normalize_name(args["project"])
+    if "branch" in args and args["branch"] is not None:
+        args["branch"] = normalize_name(args["branch"])
     if "keywords" in args and isinstance(args["keywords"], list):
         args["keywords"] = [normalize_name(k) for k in args["keywords"]]
     if "name" in args and args["name"] is not None and name in ("create_group", "get_group"):
@@ -64,14 +66,16 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
         if name == "start_session":
             session = db.create_session(
                 agent_type=args["agent_type"], model=args["model"],
-                project=args.get("project"), goal=args.get("goal"),
+                project=args.get("project"), branch=args.get("branch"),
+                goal=args.get("goal"),
             )
-            resume = db.get_resume_context(project=args.get("project"))
+            resume = db.get_resume_context(project=args.get("project"), branch=args.get("branch"))
             return _json_result({"session": session, "resume_context": resume})
         elif name == "end_session":
             session = db.end_session(args["session_id"], summary=args.get("summary"))
             ss = db.add_session_summary(
                 session_id=args["session_id"], project=session.get("project"),
+                branch=session.get("branch"),
                 goal=session.get("goal"), outcome=args.get("outcome", args.get("summary")),
                 decisions_made=args.get("decisions_made"), rules_learned=args.get("rules_learned"),
                 errors_encountered=args.get("errors_encountered"),
@@ -92,7 +96,7 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
             )
             return _json_result(snapshot)
         elif name == "get_resume_context":
-            return _json_result(db.get_resume_context(project=args.get("project")))
+            return _json_result(db.get_resume_context(project=args.get("project"), branch=args.get("branch")))
 
     # ── Knowledge ───────────────────────────────────────────────────────
     elif mod is knowledge:
@@ -100,7 +104,8 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
             return _json_result(db.add_thought(
                 summary=args["summary"], content=args.get("content", ""),
                 type=args.get("type", "note"), session_id=args.get("session_id"),
-                project=args.get("project"), keywords=args.get("keywords"),
+                project=args.get("project"), branch=args.get("branch"),
+                keywords=args.get("keywords"),
                 associated_files=args.get("associated_files"),
                 pinned=args.get("pinned", False),
             ))
@@ -116,7 +121,8 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
                 summary=args["summary"], content=args.get("content", ""),
                 type=args["type"], severity=args["severity"],
                 condition=args.get("condition"), session_id=args.get("session_id"),
-                project=args.get("project"), keywords=args.get("keywords"),
+                project=args.get("project"), branch=args.get("branch"),
+                keywords=args.get("keywords"),
                 associated_files=args.get("associated_files"),
                 pinned=args.get("pinned", False),
             ))
@@ -127,6 +133,7 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
                 error_description=args["error_description"], cause=args.get("cause"),
                 fix=args.get("fix"), prevention_rule_id=args.get("prevention_rule_id"),
                 session_id=args.get("session_id"), project=args.get("project"),
+                branch=args.get("branch"),
                 keywords=args.get("keywords"), associated_files=args.get("associated_files"),
             ))
         elif name == "link_items":
@@ -141,6 +148,7 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
         if name == "search":
             results = db.search(
                 query=args["query"], project=args.get("project"),
+                branch=args.get("branch"),
                 type_filter=args.get("type_filter"),
                 include_archived=args.get("include_archived", False),
                 limit=args.get("limit", 20),
@@ -149,6 +157,7 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
         elif name == "search_by_embedding":
             results = db.search_by_embedding(
                 embedding=args["embedding"], project=args.get("project"),
+                branch=args.get("branch"),
                 type_filter=args.get("type_filter"), limit=args.get("limit", 20),
             )
             return _json_result({"count": len(results), "results": results})
@@ -161,7 +170,8 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
             return _json_result({"status": "stored", "item_id": args["item_id"]})
         elif name == "get_rules":
             rules = db.get_rules(
-                project=args.get("project"), severity=args.get("severity"),
+                project=args.get("project"), branch=args.get("branch"),
+                severity=args.get("severity"),
                 keywords=args.get("keywords"),
                 include_global=args.get("include_global", True),
                 limit=args.get("limit", 50),
@@ -169,7 +179,8 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
             return _json_result({"count": len(rules), "rules": rules})
         elif name == "get_session_history":
             ss = db.list_sessions(
-                project=args.get("project"), agent_type=args.get("agent_type"),
+                project=args.get("project"), branch=args.get("branch"),
+                agent_type=args.get("agent_type"),
                 limit=args.get("limit", 20),
             )
             return _json_result({"count": len(ss), "sessions": ss})
@@ -188,14 +199,14 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
         elif name == "create_group":
             return _json_result(db.create_group(
                 name=args["name"], description=args.get("description", ""),
-                project=args.get("project"),
+                project=args.get("project"), branch=args.get("branch"),
             ))
         elif name == "add_to_group":
             return _json_result(db.add_to_group(args["group_id"], args["item_id"], args["item_type"]))
         elif name == "remove_from_group":
             return _json_result({"removed": db.remove_from_group(args["group_id"], args["item_id"])})
         elif name == "get_group":
-            g = db.get_group(group_id=args.get("group_id"), name=args.get("name"), project=args.get("project"))
+            g = db.get_group(group_id=args.get("group_id"), name=args.get("name"), project=args.get("project"), branch=args.get("branch"))
             return _json_result(g or {"error": "Group not found"})
         elif name == "pin_item":
             result = db.pin_item(args["item_id"], pinned=args.get("pinned", True))

@@ -23,6 +23,7 @@ TOOLS = [
             "properties": {
                 "query": {"type": "string", "description": "Search query (natural language or keywords)"},
                 "project": {"type": "string", "description": "Filter by project tag"},
+                "branch": {"type": "string", "description": "Filter by git branch name"},
                 "type_filter": {
                     "type": "string",
                     "enum": ["thought", "rule", "error_pattern", "session_summary"],
@@ -45,6 +46,7 @@ TOOLS = [
             "properties": {
                 "embedding": {"type": "array", "items": {"type": "number"}, "description": "Embedding vector"},
                 "project": {"type": "string"},
+                "branch": {"type": "string", "description": "Filter by git branch name"},
                 "type_filter": {"type": "string", "enum": ["thought", "rule", "error_pattern", "session_summary"]},
                 "limit": {"type": "integer", "default": 20},
             },
@@ -80,6 +82,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "project": {"type": "string"},
+                "branch": {"type": "string", "description": "Git branch name (returns branch-specific + branch-global rules)"},
                 "severity": {"type": "string", "enum": ["critical", "preference", "context_dependent"]},
                 "keywords": {"type": "array", "items": {"type": "string"}, "description": "Filter by keyword overlap"},
                 "include_global": {"type": "boolean", "default": True, "description": "Include rules with no project tag"},
@@ -94,6 +97,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "project": {"type": "string"},
+                "branch": {"type": "string", "description": "Filter by git branch name"},
                 "agent_type": {"type": "string"},
                 "limit": {"type": "integer", "default": 20},
             },
@@ -146,6 +150,7 @@ TOOLS = [
                 "name": {"type": "string"},
                 "description": {"type": "string"},
                 "project": {"type": "string"},
+                "branch": {"type": "string", "description": "Git branch name (optional)"},
             },
             "required": ["name"],
         },
@@ -184,6 +189,7 @@ TOOLS = [
                 "group_id": {"type": "string"},
                 "name": {"type": "string"},
                 "project": {"type": "string"},
+                "branch": {"type": "string", "description": "Git branch name (used with name lookup)"},
             },
         },
     ),

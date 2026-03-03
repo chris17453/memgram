@@ -56,16 +56,17 @@ class DatabaseBackend(ABC):
     @abstractmethod
     def fts_search(
         self, table: str, query: str, project: Optional[str] = None,
+        branch: Optional[str] = None,
         include_archived: bool = False, limit: int = 50,
     ) -> list[dict]:
         """Full-text search on a content table. Returns rows with a `_fts_rank` key."""
         ...
 
     @abstractmethod
-    def fts_search_errors(self, query: str, project: Optional[str] = None, limit: int = 50) -> list[dict]: ...
+    def fts_search_errors(self, query: str, project: Optional[str] = None, branch: Optional[str] = None, limit: int = 50) -> list[dict]: ...
 
     @abstractmethod
-    def fts_search_sessions(self, query: str, project: Optional[str] = None, limit: int = 50) -> list[dict]: ...
+    def fts_search_sessions(self, query: str, project: Optional[str] = None, branch: Optional[str] = None, limit: int = 50) -> list[dict]: ...
 
     # ── Vector / RAG (dialect-specific) ─────────────────────────────────
 
@@ -80,7 +81,8 @@ class DatabaseBackend(ABC):
     @abstractmethod
     def vector_search(
         self, embedding: list[float], item_type: Optional[str] = None,
-        project: Optional[str] = None, limit: int = 20,
+        project: Optional[str] = None, branch: Optional[str] = None,
+        limit: int = 20,
     ) -> list[dict]:
         """Find nearest neighbors by vector similarity. Returns rows with `_distance` key."""
         ...
@@ -139,16 +141,17 @@ class MemgramDB:
 
     def create_session(
         self, agent_type: str, model: str,
-        project: Optional[str] = None, goal: Optional[str] = None,
+        project: Optional[str] = None, branch: Optional[str] = None,
+        goal: Optional[str] = None,
         metadata: Optional[dict] = None,
     ) -> dict:
         ts = now_iso()
         sid = new_id()
         p = self._p
         self.backend.execute(
-            f"""INSERT INTO sessions (id, agent_type, model, project, goal, status, compaction_count, started_at, metadata)
-               VALUES ({p}, {p}, {p}, {p}, {p}, 'active', 0, {p}, {p})""",
-            (sid, agent_type, model, project, goal, ts,
+            f"""INSERT INTO sessions (id, agent_type, model, project, branch, goal, status, compaction_count, started_at, metadata)
+               VALUES ({p}, {p}, {p}, {p}, {p}, {p}, 'active', 0, {p}, {p})""",
+            (sid, agent_type, model, project, branch, goal, ts,
              self.backend.encode_json(metadata) if metadata else None),
         )
         return self.backend.fetchone(f"SELECT * FROM sessions WHERE id={p}", (sid,))
@@ -168,7 +171,7 @@ class MemgramDB:
         )
 
     def list_sessions(
-        self, project: Optional[str] = None,
+        self, project: Optional[str] = None, branch: Optional[str] = None,
         agent_type: Optional[str] = None, limit: int = 20,
     ) -> list[dict]:
         p = self._p
@@ -177,6 +180,9 @@ class MemgramDB:
         if project:
             q += f" AND project={p}"
             params.append(project)
+        if branch:
+            q += f" AND branch={p}"
+            params.append(branch)
         if agent_type:
             q += f" AND agent_type={p}"
             params.append(agent_type)
@@ -189,6 +195,7 @@ class MemgramDB:
     def add_thought(
         self, summary: str, content: str = "", type: str = "note",
         session_id: Optional[str] = None, project: Optional[str] = None,
+        branch: Optional[str] = None,
         keywords: Optional[list[str]] = None,
         associated_files: Optional[list[str]] = None,
         pinned: bool = False,
@@ -198,11 +205,11 @@ class MemgramDB:
         p = self._p
         self.backend.execute(
             f"""INSERT INTO thoughts
-               (id, session_id, type, summary, content, project, keywords,
+               (id, session_id, type, summary, content, project, branch, keywords,
                 associated_files, pinned, archived, access_count,
                 created_at, updated_at, last_accessed)
-               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},0,0,{p},{p},{p})""",
-            (tid, session_id, type, summary, content, project,
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},0,0,{p},{p},{p})""",
+            (tid, session_id, type, summary, content, project, branch,
              self.backend.encode_json(keywords or []),
              self.backend.encode_json(associated_files or []),
              1 if pinned else 0, ts, ts, ts),
@@ -210,7 +217,7 @@ class MemgramDB:
         return self.backend.fetchone(f"SELECT * FROM thoughts WHERE id={p}", (tid,))
 
     def update_thought(self, thought_id: str, **fields) -> Optional[dict]:
-        allowed = {"summary", "content", "type", "project", "keywords",
+        allowed = {"summary", "content", "type", "project", "branch", "keywords",
                     "associated_files", "pinned", "archived"}
         updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not updates:
@@ -240,6 +247,7 @@ class MemgramDB:
         self, summary: str, content: str = "", type: str = "do",
         severity: str = "preference", condition: Optional[str] = None,
         session_id: Optional[str] = None, project: Optional[str] = None,
+        branch: Optional[str] = None,
         keywords: Optional[list[str]] = None,
         associated_files: Optional[list[str]] = None,
         pinned: bool = False,
@@ -249,11 +257,11 @@ class MemgramDB:
         p = self._p
         self.backend.execute(
             f"""INSERT INTO rules
-               (id, session_id, type, severity, summary, content, condition, project,
+               (id, session_id, type, severity, summary, content, condition, project, branch,
                 keywords, associated_files, pinned, archived, reinforcement_count,
                 created_at, updated_at, last_accessed)
-               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},0,1,{p},{p},{p})""",
-            (rid, session_id, type, severity, summary, content, condition, project,
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},0,1,{p},{p},{p})""",
+            (rid, session_id, type, severity, summary, content, condition, project, branch,
              self.backend.encode_json(keywords or []),
              self.backend.encode_json(associated_files or []),
              1 if pinned else 0, ts, ts, ts),
@@ -284,7 +292,7 @@ class MemgramDB:
         return row
 
     def get_rules(
-        self, project: Optional[str] = None,
+        self, project: Optional[str] = None, branch: Optional[str] = None,
         severity: Optional[str] = None,
         keywords: Optional[list[str]] = None,
         include_global: bool = True, limit: int = 50,
@@ -298,6 +306,9 @@ class MemgramDB:
             else:
                 q += f" AND project={p}"
             params.append(project)
+        if branch:
+            q += f" AND (branch={p} OR branch IS NULL)"
+            params.append(branch)
         if severity:
             q += f" AND severity={p}"
             params.append(severity)
@@ -362,6 +373,7 @@ class MemgramDB:
         self, error_description: str, cause: Optional[str] = None,
         fix: Optional[str] = None, prevention_rule_id: Optional[str] = None,
         session_id: Optional[str] = None, project: Optional[str] = None,
+        branch: Optional[str] = None,
         keywords: Optional[list[str]] = None,
         associated_files: Optional[list[str]] = None,
     ) -> dict:
@@ -371,10 +383,10 @@ class MemgramDB:
         self.backend.execute(
             f"""INSERT INTO error_patterns
                (id, session_id, error_description, cause, fix, prevention_rule_id,
-                project, keywords, associated_files, created_at)
-               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+                project, branch, keywords, associated_files, created_at)
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
             (eid, session_id, error_description, cause, fix, prevention_rule_id,
-             project, self.backend.encode_json(keywords or []),
+             project, branch, self.backend.encode_json(keywords or []),
              self.backend.encode_json(associated_files or []), ts),
         )
         return self.backend.fetchone(f"SELECT * FROM error_patterns WHERE id={p}", (eid,))
@@ -464,6 +476,7 @@ class MemgramDB:
 
     def add_session_summary(
         self, session_id: str, project: Optional[str] = None,
+        branch: Optional[str] = None,
         goal: Optional[str] = None, outcome: Optional[str] = None,
         decisions_made: Optional[list[str]] = None,
         rules_learned: Optional[list[str]] = None,
@@ -481,10 +494,10 @@ class MemgramDB:
         )
         self.backend.execute(
             f"""INSERT INTO session_summaries
-               (id, session_id, project, goal, outcome, decisions_made, rules_learned,
+               (id, session_id, project, branch, goal, outcome, decisions_made, rules_learned,
                 errors_encountered, files_modified, unresolved_items, next_session_hints, created_at)
-               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
-            (sid, session_id, project, goal, outcome,
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (sid, session_id, project, branch, goal, outcome,
              self.backend.encode_json(decisions_made or []),
              self.backend.encode_json(rules_learned or []),
              self.backend.encode_json(errors_encountered or []),
@@ -498,13 +511,13 @@ class MemgramDB:
 
     # ── Groups ──────────────────────────────────────────────────────────
 
-    def create_group(self, name: str, description: str = "", project: Optional[str] = None) -> dict:
+    def create_group(self, name: str, description: str = "", project: Optional[str] = None, branch: Optional[str] = None) -> dict:
         ts = now_iso()
         gid = new_id()
         p = self._p
         self.backend.execute(
-            f"INSERT INTO thought_groups (id, name, description, project, created_at, updated_at) VALUES ({p},{p},{p},{p},{p},{p})",
-            (gid, name, description, project, ts, ts),
+            f"INSERT INTO thought_groups (id, name, description, project, branch, created_at, updated_at) VALUES ({p},{p},{p},{p},{p},{p},{p})",
+            (gid, name, description, project, branch, ts, ts),
         )
         return self.backend.fetchone(
             f"SELECT * FROM thought_groups WHERE id={p}", (gid,),
@@ -539,6 +552,7 @@ class MemgramDB:
     def get_group(
         self, group_id: Optional[str] = None,
         name: Optional[str] = None, project: Optional[str] = None,
+        branch: Optional[str] = None,
     ) -> Optional[dict]:
         p = self._p
         if group_id:
@@ -549,6 +563,9 @@ class MemgramDB:
             if project:
                 q += f" AND project={p}"
                 params.append(project)
+            if branch:
+                q += f" AND branch={p}"
+                params.append(branch)
             group = self.backend.fetchone(q, params)
         else:
             return None
@@ -600,6 +617,7 @@ class MemgramDB:
 
     def search(
         self, query: str, project: Optional[str] = None,
+        branch: Optional[str] = None,
         type_filter: Optional[str] = None,
         include_archived: bool = False, limit: int = 20,
     ) -> list[dict]:
@@ -607,25 +625,25 @@ class MemgramDB:
         results: list[dict] = []
 
         if not type_filter or type_filter in ("thought", "thoughts"):
-            for r in self.backend.fts_search("thoughts", query, project, include_archived):
+            for r in self.backend.fts_search("thoughts", query, project, branch, include_archived):
                 r["_type"] = "thought"
                 r["_score"] = self._compute_score(r, r.pop("_fts_rank", 1.0))
                 results.append(r)
 
         if not type_filter or type_filter in ("rule", "rules"):
-            for r in self.backend.fts_search("rules", query, project, include_archived):
+            for r in self.backend.fts_search("rules", query, project, branch, include_archived):
                 r["_type"] = "rule"
                 r["_score"] = self._compute_score(r, r.pop("_fts_rank", 1.0))
                 results.append(r)
 
         if not type_filter or type_filter in ("error", "error_pattern", "error_patterns"):
-            for r in self.backend.fts_search_errors(query, project):
+            for r in self.backend.fts_search_errors(query, project, branch):
                 r["_type"] = "error_pattern"
                 r["_score"] = r.pop("_fts_rank", 1.0)
                 results.append(r)
 
         if not type_filter or type_filter in ("session", "session_summary"):
-            for r in self.backend.fts_search_sessions(query, project):
+            for r in self.backend.fts_search_sessions(query, project, branch):
                 r["_type"] = "session_summary"
                 r["_score"] = r.pop("_fts_rank", 1.0)
                 results.append(r)
@@ -644,6 +662,7 @@ class MemgramDB:
 
     def search_by_embedding(
         self, embedding: list[float], project: Optional[str] = None,
+        branch: Optional[str] = None,
         type_filter: Optional[str] = None, limit: int = 20,
     ) -> list[dict]:
         """RAG-style semantic search using vector similarity.
@@ -654,7 +673,7 @@ class MemgramDB:
         if not self.backend.has_embeddings():
             return []
 
-        raw = self.backend.vector_search(embedding, type_filter, project, limit)
+        raw = self.backend.vector_search(embedding, type_filter, project, branch, limit)
         results = []
         p = self._p
         for r in raw:
@@ -681,13 +700,13 @@ class MemgramDB:
 
     # ── Resume Context ──────────────────────────────────────────────────
 
-    def get_resume_context(self, project: Optional[str] = None) -> dict:
+    def get_resume_context(self, project: Optional[str] = None, branch: Optional[str] = None) -> dict:
         """Get everything an AI needs to resume work."""
         p = self._p
         context: dict[str, Any] = {}
 
         # Last session
-        sessions = self.list_sessions(project=project, limit=1)
+        sessions = self.list_sessions(project=project, branch=branch, limit=1)
         if sessions:
             last = sessions[0]
             context["last_session"] = last
@@ -706,6 +725,9 @@ class MemgramDB:
         if project:
             q += f" AND (project={p} OR project IS NULL)"
             params.append(project)
+        if branch:
+            q += f" AND (branch={p} OR branch IS NULL)"
+            params.append(branch)
         context["pinned_thoughts"] = self.backend.fetchall(q, params)
 
         # Active rules (pinned + critical)
@@ -714,6 +736,9 @@ class MemgramDB:
         if project:
             q += f" AND (project={p} OR project IS NULL)"
             params.append(project)
+        if branch:
+            q += f" AND (branch={p} OR branch IS NULL)"
+            params.append(branch)
         q += " ORDER BY pinned DESC, reinforcement_count DESC"
         context["active_rules"] = self.backend.fetchall(q, params)
 

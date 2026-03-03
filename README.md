@@ -1,11 +1,13 @@
 # Memgram — AI Memory Graph
 
-A persistent memory layer for AI assistants, built as an [MCP](https://modelcontextprotocol.io/) server. Memgram gives any MCP-compatible AI (Copilot CLI, Claude Desktop, Cursor, etc.) the ability to remember thoughts, rules, decisions, and errors across sessions.
+A persistent memory layer for AI assistants, built as an [MCP](https://modelcontextprotocol.io/) server. Memgram gives any MCP-compatible AI (Copilot CLI, Claude Desktop, Claude Code, Cursor, etc.) the ability to remember thoughts, rules, decisions, and errors across sessions.
 
 ## Features
 
 - **24 MCP tools** for storing/retrieving knowledge
 - **Session management** — track what was done, when, by which AI/model
+- **Two-dimensional scoping** — filter by `project` and/or `branch`
+- **Name normalization** — `oxide-os`, `oxide_os`, `OxideOS` all match as `oxideos`
 - **Compaction-aware** — save/restore state at context window boundaries
 - **Rules engine** — learned do/don't patterns with severity and reinforcement
 - **Error patterns** — failure knowledge that prevents repeated mistakes
@@ -13,6 +15,7 @@ A persistent memory layer for AI assistants, built as an [MCP](https://modelcont
 - **sqlite-vec vector search** for RAG-style semantic retrieval
 - **Thought groups** — cluster related items together
 - **Project summaries** — living overviews that auto-update
+- **Markdown export** — dump the entire database as linked markdown files
 - **Abstracted DB layer** — SQLite now, PostgreSQL/pgvector ready
 
 ## Quick Start
@@ -21,15 +24,30 @@ A persistent memory layer for AI assistants, built as an [MCP](https://modelcont
 # Install
 uv add memgram
 
-# Run as MCP server (stdio)
-uv run memgram
+# Run as MCP server (stdio) — default subcommand
+memgram serve
 
-# Or with custom DB path
-uv run memgram --db-path /path/to/memgram.db
+# Or just:
+memgram
 
-# Or with custom embedding dimensions (default: 384)
-uv run memgram --embedding-dim 1536
+# With custom DB path
+memgram --db-path /path/to/memgram.db serve
+
+# With custom embedding dimensions (default: 384)
+memgram serve --embedding-dim 1536
+
+# Export database as markdown
+memgram export -o memgram-export
 ```
+
+## CLI Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `memgram serve` | Run the MCP server over stdio (default when no subcommand given) |
+| `memgram export` | Export the database as a tree of linked markdown files |
+
+Global flags (`--db-path`) go before the subcommand; subcommand-specific flags go after.
 
 ## MCP Configuration
 
@@ -69,91 +87,105 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
+### Claude Code
+
+Add to `.claude/settings.json` or project-level `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "memgram": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/memgram", "memgram"],
+      "env": {
+        "MEMGRAM_DB_PATH": "~/.memgram/memgram.db"
+      }
+    }
+  }
+}
+```
+
+## Scoping Model
+
+Memgram uses a two-dimensional scoping system: **project** + **branch**.
+
+| Dimension | Purpose | Example |
+|-----------|---------|---------|
+| `project` | Isolates knowledge per codebase/repo | `"myapp"`, `"oxideos"` |
+| `branch` | Isolates knowledge per feature branch | `"featureauth"`, `"fixloginbug"` |
+
+Both are optional and normalized (lowercased, non-alphanumeric stripped): `feature/auth-flow` becomes `featureauthflow`.
+
+**How scoping works:**
+- **No project, no branch** — item is fully global
+- **Project only** — item scoped to that project, visible on all branches
+- **Project + branch** — item scoped to that specific branch
+
+**Retrieval behavior:**
+- `get_rules` and `get_resume_context` use NULL-inclusive matching: when you pass `branch="featureauth"`, you get items where `branch='featureauth'` **plus** items where `branch IS NULL` (branch-global items). This means project-wide rules always surface regardless of which branch you're on.
+- `search` and `list_sessions` use exact matching: only items matching the specified branch are returned.
+
+**Guidance:**
+- Use `branch` for feature-specific decisions, temporary workarounds, and branch-only context
+- Omit `branch` for project-wide truths (coding standards, architecture decisions, persistent rules)
+- When a branch merges, its branch-scoped knowledge stays in the DB but stops surfacing (since no one queries that branch anymore)
+
 ## Tools
 
 ### Session Management
-| Tool | Description |
-|------|-------------|
-| `start_session` | Begin a session. Returns resume context (last snapshot, pinned items, rules). |
-| `end_session` | Close with structured summary (decisions, files, next hints). |
-| `save_snapshot` | Compaction checkpoint — goal, progress, blockers, next steps. |
-| `get_resume_context` | Everything needed to resume: session, snapshot, rules, project summary. |
+| Tool | Branch | Description |
+|------|--------|-------------|
+| `start_session` | yes | Begin a session. Returns resume context (last snapshot, pinned items, rules). |
+| `end_session` | — | Close with structured summary (decisions, files, next hints). |
+| `save_snapshot` | — | Compaction checkpoint — goal, progress, blockers, next steps. |
+| `get_resume_context` | yes | Everything needed to resume: session, snapshot, rules, project summary. |
 
 ### Knowledge Management
-| Tool | Description |
-|------|-------------|
-| `add_thought` | Store a thought (observation, decision, idea, pattern, note). |
-| `update_thought` | Modify an existing thought. |
-| `add_rule` | Learned pattern — do/don't/context-dependent with severity. |
-| `reinforce_rule` | Bump a rule's confidence when re-confirmed. |
-| `add_error_pattern` | Log a failure: what broke, why, how to fix. |
-| `link_items` | Connect items (informs, contradicts, supersedes, related, caused_by). |
+| Tool | Branch | Description |
+|------|--------|-------------|
+| `add_thought` | yes | Store a thought (observation, decision, idea, pattern, note). |
+| `update_thought` | yes | Modify an existing thought. |
+| `add_rule` | yes | Learned pattern — do/don't/context-dependent with severity. |
+| `reinforce_rule` | — | Bump a rule's confidence when re-confirmed. |
+| `add_error_pattern` | yes | Log a failure: what broke, why, how to fix. |
+| `link_items` | — | Connect items (informs, contradicts, supersedes, related, caused_by). |
 
 ### Search & Retrieval
-| Tool | Description |
-|------|-------------|
-| `search` | FTS5 full-text search across all tables with relevance scoring. |
-| `search_by_embedding` | RAG-style vector similarity search (requires stored embeddings). |
-| `store_embedding` | Store a vector embedding for an item. |
-| `get_rules` | Get active rules for a context (project, severity, keywords). |
-| `get_session_history` | Past sessions with summaries. |
-| `get_related` | Items linked via the thought graph. |
-| `get_project_summary` | Living project overview. |
-| `update_project_summary` | Update project overview, tech stack, patterns, goals. |
+| Tool | Branch | Description |
+|------|--------|-------------|
+| `search` | yes | FTS5 full-text search across all tables with relevance scoring. |
+| `search_by_embedding` | yes | RAG-style vector similarity search (requires stored embeddings). |
+| `store_embedding` | — | Store a vector embedding for an item. |
+| `get_rules` | yes | Get active rules for a context (project, branch, severity, keywords). |
+| `get_session_history` | yes | Past sessions with summaries. |
+| `get_related` | — | Items linked via the thought graph. |
+| `get_project_summary` | — | Living project overview. |
+| `update_project_summary` | — | Update project overview, tech stack, patterns, goals. |
 
 ### Groups & Maintenance
-| Tool | Description |
-|------|-------------|
-| `create_group` | Create a named cluster (e.g., "authentication system"). |
-| `add_to_group` | Add items to a group. |
-| `remove_from_group` | Remove item from group. |
-| `get_group` | Get group with all member details. |
-| `pin_item` | Pin/unpin — pinned items always load in resume context. |
-| `archive_item` | Archive — excluded from search by default. |
-
-## AI Instructions
-
-Add these instructions to your AI's system prompt or rules file:
-
-```
-You have access to memgram, a persistent memory system. Use it as follows:
-
-SESSION LIFECYCLE:
-- Call start_session at the beginning of every conversation
-- Call get_rules when starting work on any file/project
-- Call save_snapshot before any context compaction
-- Call end_session with a summary when done
-
-RECORDING KNOWLEDGE:
-- Log important decisions with add_thought (type: decision)
-- Log errors with add_error_pattern when something fails
-- Create rules with add_rule when learning something generalizable
-- Link related items with link_items
-
-SEARCHING:
-- Use search proactively before making decisions to check existing knowledge
-- Use get_rules at the start of work to load relevant rules
-- Use get_resume_context to pick up where the last session left off
-
-MAINTENANCE:
-- Pin critical thoughts/rules that should always be in context
-- Reinforce rules when they prove correct again
-- Update project summaries periodically
-```
+| Tool | Branch | Description |
+|------|--------|-------------|
+| `create_group` | yes | Create a named cluster (e.g., "authentication system"). |
+| `add_to_group` | — | Add items to a group. |
+| `remove_from_group` | — | Remove item from group. |
+| `get_group` | yes | Get group with all member details. |
+| `pin_item` | — | Pin/unpin — pinned items always load in resume context. |
+| `archive_item` | — | Archive — excluded from search by default. |
 
 ## Architecture
 
 ```
 src/memgram/
-├── server.py              # MCP server entry point (stdio)
+├── server.py              # MCP server entry point (stdio) + CLI subcommands
 ├── models.py              # Data models
-├── utils.py               # ID generation, timestamps
+├── utils.py               # ID generation, timestamps, name normalization
+├── export.py              # Markdown export (memgram export)
 ├── db/
 │   ├── __init__.py        # create_db() factory
 │   ├── base.py            # DatabaseBackend ABC + MemgramDB business logic
 │   └── sqlite.py          # SQLite + FTS5 + sqlite-vec backend
 └── tools/
-    ├── __init__.py        # Tool registration & dispatch
+    ├── __init__.py        # Tool registration & dispatch (normalization choke point)
     ├── sessions.py        # Session management tool definitions
     ├── knowledge.py       # Knowledge management tool definitions
     └── search.py          # Search/retrieval/groups/maintenance tool definitions
@@ -163,7 +195,9 @@ src/memgram/
 
 Default location: `~/.memgram/memgram.db`
 
-11 tables: sessions, thoughts, rules, compaction_snapshots, thought_links, error_patterns, project_summaries, session_summaries, thought_groups, group_members, embedding_meta + a sqlite-vec virtual table for vector search.
+12 tables: sessions, thoughts, rules, compaction_snapshots, thought_links, error_patterns, project_summaries, session_summaries, thought_groups, group_members, embedding_meta + a sqlite-vec virtual table for vector search.
+
+Existing databases are auto-migrated: the `branch` column is added to the 7 relevant tables on startup (idempotent). Existing rows get `branch=NULL`, which works seamlessly.
 
 ## Environment Variables
 
@@ -171,4 +205,3 @@ Default location: `~/.memgram/memgram.db`
 |----------|---------|-------------|
 | `MEMGRAM_DB_PATH` | `~/.memgram/memgram.db` | SQLite database path |
 | `MEMGRAM_EMBEDDING_DIM` | `384` | Embedding vector dimensions |
-# memgram

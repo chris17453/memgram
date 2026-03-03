@@ -17,14 +17,17 @@ You are not just a consumer of memgram — you are its curator. The quality of y
 At the **very beginning** of every conversation:
 
 ```
-1. Call start_session with your agent_type, model, project, and goal
+1. Call start_session with your agent_type, model, project, branch, and goal
+   - project: the codebase/repo name (e.g., "myapp")
+   - branch: the git branch you're working on (e.g., "feature/auth" → normalized to "featureauth")
+   - Both are optional; use them when working in a scoped context
 2. Read the resume_context that comes back — it contains:
    - Last session summary and where it left off
    - Last compaction snapshot (goal, progress, blockers, next steps)
-   - All pinned thoughts (always-relevant knowledge)
-   - All critical/pinned rules (things you must follow)
+   - All pinned thoughts (always-relevant knowledge, branch-scoped + global)
+   - All critical/pinned rules (things you must follow, branch-scoped + global)
    - Project summary (overview, tech stack, patterns)
-3. Call get_rules for the project to load all active rules
+3. Call get_rules for the project/branch to load all active rules
 4. If resuming previous work, review the last snapshot's next_steps
 ```
 
@@ -74,6 +77,53 @@ Call end_session with:
 
 ---
 
+## Branch Scoping
+
+Memgram supports two-dimensional scoping: **project** + **branch**. This lets you track branch-specific context that doesn't pollute other branches.
+
+### When to Use Branch
+
+| Scenario | Use `branch`? |
+|----------|---------------|
+| Working on a feature branch | Yes — pass the branch name |
+| Recording a project-wide coding standard | No — omit branch so it's visible everywhere |
+| Logging a workaround specific to your feature | Yes — it shouldn't leak to main |
+| Adding a rule that applies to all branches | No — omit branch |
+| Debugging an issue on a specific branch | Yes — scope errors/thoughts to the branch |
+
+### How Branch Filtering Works
+
+- **`get_rules`** and **`get_resume_context`** return branch-scoped items **plus** branch-global items (`branch IS NULL`). This means project-wide rules always surface.
+- **`search`**, **`list_sessions`**, and other search tools use exact branch matching — only items with the specified branch are returned.
+- Names are normalized: `feature/auth-flow` → `featureauthflow`. You don't need to pre-normalize.
+
+### Example: Branch-Aware Session Flow
+
+```
+→ start_session(agent_type="copilot", model="claude-sonnet-4",
+                project="myapp", branch="feature/auth", goal="Add OAuth login")
+← Resume context includes:
+   - Last session on this branch
+   - Pinned thoughts from this branch + project-global pinned thoughts
+   - Critical rules from this branch + project-global critical rules
+
+→ add_thought(summary="Using PKCE flow for OAuth", type="decision",
+              project="myapp", branch="feature/auth",
+              keywords=["auth", "oauth", "pkce"])
+
+→ add_rule(summary="Always use state param in OAuth redirects", type="do", severity="critical",
+           project="myapp",   ← no branch = applies to all branches
+           keywords=["auth", "oauth", "security"])
+
+→ add_error_pattern(error_description="OAuth callback failed with CSRF error",
+                    cause="Missing state parameter in redirect URL",
+                    fix="Added state param generation and validation",
+                    project="myapp", branch="feature/auth",
+                    keywords=["auth", "oauth", "csrf"])
+```
+
+---
+
 ## What to Record
 
 ### Thoughts (add_thought)
@@ -87,7 +137,7 @@ Call end_session with:
 | `note` | General knowledge worth preserving | "The CI pipeline takes ~3 minutes to run" |
 | `error` | Something that went wrong (use add_error_pattern for structured version) | "Build failed due to missing type stub" |
 
-**Always include**: summary (searchable), keywords (for retrieval), project tag, associated_files (if relevant).
+**Always include**: summary (searchable), keywords (for retrieval), project tag, branch (if branch-specific), associated_files (if relevant).
 
 ### Rules (add_rule)
 
@@ -103,6 +153,8 @@ Rules are your most powerful tool. They encode learned behavior that persists fo
 
 **Always include**: condition (when does this apply?), keywords, project (null = global rule).
 
+**Branch guidance**: Omit `branch` for rules that should apply project-wide. Only set `branch` for rules that are specific to a feature branch and shouldn't persist after merge.
+
 When you encounter a situation that confirms an existing rule, call **reinforce_rule** to bump its confidence.
 
 ### Error Patterns (add_error_pattern)
@@ -112,10 +164,12 @@ When something breaks and you fix it:
 ```
 add_error_pattern(
   error_description: "Build failed with 'Module not found: xyz'"
-  cause: "Missing dependency — xyz wasn't in pyproject.toml"  
+  cause: "Missing dependency — xyz wasn't in pyproject.toml"
   fix: "Added xyz to dependencies and ran uv sync"
   keywords: ["build", "dependencies", "uv"]
   associated_files: ["pyproject.toml"]
+  project: "myapp"
+  branch: "feature/auth"  ← optional, use if branch-specific
 )
 ```
 
@@ -130,16 +184,17 @@ If you create a rule to prevent it from happening again, link them with `prevent
 **Always search memgram before making significant decisions.** Previous sessions may have already solved this problem or established a rule about it.
 
 ```
-search(query="authentication approach", project="myapp")
+search(query="authentication approach", project="myapp", branch="feature/auth")
 ```
 
 ### Search Strategies
 
 | Goal | Tool | Example |
 |------|------|---------|
-| General lookup | `search` | `search(query="database migration")` |
-| Find rules for current work | `get_rules` | `get_rules(project="myapp", keywords=["auth"])` |
-| Check previous sessions | `get_session_history` | `get_session_history(project="myapp", limit=5)` |
+| General lookup | `search` | `search(query="database migration", project="myapp")` |
+| Branch-scoped lookup | `search` | `search(query="auth", project="myapp", branch="feature/auth")` |
+| Find rules for current work | `get_rules` | `get_rules(project="myapp", branch="feature/auth", keywords=["auth"])` |
+| Check previous sessions | `get_session_history` | `get_session_history(project="myapp", branch="feature/auth", limit=5)` |
 | Find related items | `get_related` | `get_related(item_id="abc123")` |
 | Get clustered knowledge | `get_group` | `get_group(name="auth-system", project="myapp")` |
 | Project overview | `get_project_summary` | `get_project_summary(project="myapp")` |
@@ -179,7 +234,7 @@ get_group(name="auth-system", project="myapp")
 Connect related items to build a knowledge graph:
 
 ```
-link_items(from_id="error-id", from_type="error_pattern", 
+link_items(from_id="error-id", from_type="error_pattern",
            to_id="rule-id", to_type="rule", link_type="caused_by")
 ```
 
@@ -221,7 +276,7 @@ Update this periodically — especially when goals change or the tech stack evol
 
 | When | Call |
 |------|------|
-| Conversation starts | `start_session` → read resume context → `get_rules` |
+| Conversation starts | `start_session` (with project + branch) → read resume context → `get_rules` |
 | Made a decision | `add_thought(type="decision")` |
 | Learned a do/don't | `add_rule` |
 | Something broke & was fixed | `add_error_pattern` |
@@ -242,28 +297,32 @@ Good keywords make knowledge findable. Always include:
 ## Example Session Flow
 
 ```
-→ start_session(agent_type="copilot", model="claude-sonnet-4", project="myapp", goal="Add password reset")
+→ start_session(agent_type="copilot", model="claude-sonnet-4",
+                project="myapp", branch="feature/reset", goal="Add password reset")
 ← Resume context: last session worked on login, rule: "always hash passwords with bcrypt"
 
-→ search(query="password reset email")
+→ search(query="password reset email", project="myapp")
 ← No existing knowledge
 
-→ get_rules(project="myapp", keywords=["auth", "password", "security"])
-← Rule: "Always hash passwords with bcrypt" (critical, reinforced 3x)
+→ get_rules(project="myapp", branch="feature/reset", keywords=["auth", "password", "security"])
+← Rule: "Always hash passwords with bcrypt" (critical, reinforced 3x, branch-global)
 
 ... do the work ...
 
-→ add_thought(summary="Password reset uses time-limited JWT tokens", type="decision", 
-              keywords=["auth", "password", "reset", "jwt"], project="myapp")
+→ add_thought(summary="Password reset uses time-limited JWT tokens", type="decision",
+              keywords=["auth", "password", "reset", "jwt"],
+              project="myapp", branch="feature/reset")
 
 → add_rule(summary="Reset tokens must expire within 1 hour", type="do", severity="critical",
-           condition="When implementing password/email reset flows", 
-           keywords=["auth", "reset", "security", "tokens"], project="myapp")
+           condition="When implementing password/email reset flows",
+           keywords=["auth", "reset", "security", "tokens"],
+           project="myapp")  ← no branch = project-wide rule
 
 → add_error_pattern(error_description="Reset token was accepted after expiry",
                     cause="Token expiry check was using local time instead of UTC",
                     fix="Changed to datetime.now(timezone.utc) for comparison",
-                    keywords=["auth", "tokens", "timezone", "utc"])
+                    keywords=["auth", "tokens", "timezone", "utc"],
+                    project="myapp", branch="feature/reset")
 
 → save_snapshot(session_id="...", current_goal="Password reset feature",
                 progress_summary="Reset endpoint done, email sending done, token validation done",

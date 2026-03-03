@@ -22,6 +22,7 @@ TOOLS = [
                 "agent_type": {"type": "string", "description": "AI agent type: copilot, claude, cursor, etc."},
                 "model": {"type": "string", "description": "Model name: gpt-4, claude-sonnet, etc."},
                 "project": {"type": "string", "description": "Project tag (optional, for cross-project context leave empty)"},
+                "branch": {"type": "string", "description": "Git branch name (optional, for branch-scoped context)"},
                 "goal": {"type": "string", "description": "What this session aims to accomplish"},
             },
             "required": ["agent_type", "model"],
@@ -80,6 +81,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "project": {"type": "string", "description": "Project tag to scope context (optional)"},
+                "branch": {"type": "string", "description": "Git branch name to scope context (optional)"},
             },
         },
     ),

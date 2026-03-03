@@ -310,3 +310,83 @@ class TestMCPTools:
             assert len(d["active_rules"]) >= 1
 
         asyncio.get_event_loop().run_until_complete(run())
+
+
+# ── Branch Scoping Tests ─────────────────────────────────────────────────────
+
+
+class TestBranchScoping:
+    def test_create_session_with_branch(self, db):
+        s = db.create_session("copilot", "gpt-4", project="myapp", branch="featureauth")
+        assert s["branch"] == "featureauth"
+        assert s["project"] == "myapp"
+
+    def test_list_sessions_by_branch(self, db):
+        db.create_session("copilot", "gpt-4", project="myapp", branch="featureauth")
+        db.create_session("copilot", "gpt-4", project="myapp", branch="fixbug")
+        db.create_session("copilot", "gpt-4", project="myapp")
+
+        all_sessions = db.list_sessions(project="myapp")
+        assert len(all_sessions) == 3
+
+        branch_sessions = db.list_sessions(project="myapp", branch="featureauth")
+        assert len(branch_sessions) == 1
+        assert branch_sessions[0]["branch"] == "featureauth"
+
+    def test_add_thought_with_branch(self, db):
+        t = db.add_thought("Branch thought", project="myapp", branch="featureauth")
+        assert t["branch"] == "featureauth"
+
+    def test_get_rules_branch_scoped(self, db):
+        """Branch-specific + branch-global (NULL) rules should be returned."""
+        db.add_rule("Global rule", type="do", severity="critical", project="myapp")
+        db.add_rule("Branch rule", type="do", severity="preference",
+                    project="myapp", branch="featureauth")
+        db.add_rule("Other branch rule", type="do", severity="preference",
+                    project="myapp", branch="fixbug")
+
+        rules = db.get_rules(project="myapp", branch="featureauth")
+        summaries = {r["summary"] for r in rules}
+        assert "Global rule" in summaries
+        assert "Branch rule" in summaries
+        assert "Other branch rule" not in summaries
+
+    def test_fts_search_branch_filter(self, db):
+        db.add_thought("JWT auth design", project="myapp", branch="featureauth",
+                       keywords=["auth"])
+        db.add_thought("JWT token rotation", project="myapp", branch="fixbug",
+                       keywords=["auth"])
+
+        results = db.search("JWT", project="myapp", branch="featureauth")
+        assert len(results) == 1
+        assert results[0]["branch"] == "featureauth"
+
+    def test_resume_context_with_branch(self, db):
+        """Resume context should return branch-scoped + global (NULL branch) items."""
+        db.create_session("copilot", "gpt-4", project="myapp", branch="featureauth")
+        db.add_thought("Branch pinned", project="myapp", branch="featureauth", pinned=True)
+        db.add_thought("Global pinned", project="myapp", pinned=True)
+        db.add_thought("Other branch pinned", project="myapp", branch="fixbug", pinned=True)
+        db.add_rule("Branch critical", type="do", severity="critical",
+                    project="myapp", branch="featureauth")
+        db.add_rule("Global critical", type="do", severity="critical", project="myapp")
+
+        ctx = db.get_resume_context(project="myapp", branch="featureauth")
+        assert "last_session" in ctx
+        pinned_summaries = {t["summary"] for t in ctx["pinned_thoughts"]}
+        assert "Branch pinned" in pinned_summaries
+        assert "Global pinned" in pinned_summaries
+        assert "Other branch pinned" not in pinned_summaries
+
+        rule_summaries = {r["summary"] for r in ctx["active_rules"]}
+        assert "Branch critical" in rule_summaries
+        assert "Global critical" in rule_summaries
+
+    def test_branch_normalization(self, db):
+        """Branch names like 'feature/auth-flow' should normalize to 'featureauthflow'."""
+        from memgram.utils import normalize_name
+        assert normalize_name("feature/auth-flow") == "featureauthflow"
+        assert normalize_name("Feature_Auth") == "featureauth"
+
+        s = db.create_session("copilot", "gpt-4", branch="featureauthflow")
+        assert s["branch"] == "featureauthflow"

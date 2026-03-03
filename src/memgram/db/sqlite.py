@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     agent_type TEXT NOT NULL,
     model TEXT NOT NULL,
     project TEXT,
+    branch TEXT,
     goal TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     summary TEXT,
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS thoughts (
     summary TEXT NOT NULL,
     content TEXT NOT NULL DEFAULT '',
     project TEXT,
+    branch TEXT,
     keywords TEXT NOT NULL DEFAULT '[]',
     associated_files TEXT NOT NULL DEFAULT '[]',
     pinned INTEGER NOT NULL DEFAULT 0,
@@ -57,6 +59,7 @@ CREATE TABLE IF NOT EXISTS rules (
     content TEXT NOT NULL DEFAULT '',
     condition TEXT,
     project TEXT,
+    branch TEXT,
     keywords TEXT NOT NULL DEFAULT '[]',
     associated_files TEXT NOT NULL DEFAULT '[]',
     pinned INTEGER NOT NULL DEFAULT 0,
@@ -99,6 +102,7 @@ CREATE TABLE IF NOT EXISTS error_patterns (
     fix TEXT,
     prevention_rule_id TEXT REFERENCES rules(id),
     project TEXT,
+    branch TEXT,
     keywords TEXT NOT NULL DEFAULT '[]',
     associated_files TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL
@@ -122,6 +126,7 @@ CREATE TABLE IF NOT EXISTS session_summaries (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL UNIQUE REFERENCES sessions(id),
     project TEXT,
+    branch TEXT,
     goal TEXT,
     outcome TEXT,
     decisions_made TEXT NOT NULL DEFAULT '[]',
@@ -138,6 +143,7 @@ CREATE TABLE IF NOT EXISTS thought_groups (
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     project TEXT,
+    branch TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -156,6 +162,7 @@ CREATE TABLE IF NOT EXISTS embedding_meta (
     text_content TEXT NOT NULL,
     model_name TEXT NOT NULL,
     project TEXT,
+    branch TEXT,
     created_at TEXT NOT NULL
 );
 """
@@ -257,6 +264,16 @@ CREATE INDEX IF NOT EXISTS idx_thought_links_from ON thought_links(from_id);
 CREATE INDEX IF NOT EXISTS idx_thought_links_to ON thought_links(to_id);
 CREATE INDEX IF NOT EXISTS idx_group_members_item ON group_members(item_id);
 CREATE INDEX IF NOT EXISTS idx_embedding_meta_type ON embedding_meta(item_type);
+CREATE INDEX IF NOT EXISTS idx_sessions_branch ON sessions(branch);
+CREATE INDEX IF NOT EXISTS idx_thoughts_branch ON thoughts(branch);
+CREATE INDEX IF NOT EXISTS idx_rules_branch ON rules(branch);
+CREATE INDEX IF NOT EXISTS idx_error_patterns_branch ON error_patterns(branch);
+CREATE INDEX IF NOT EXISTS idx_session_summaries_branch ON session_summaries(branch);
+CREATE INDEX IF NOT EXISTS idx_thought_groups_branch ON thought_groups(branch);
+CREATE INDEX IF NOT EXISTS idx_embedding_meta_branch ON embedding_meta(branch);
+CREATE INDEX IF NOT EXISTS idx_thoughts_project_branch ON thoughts(project, branch);
+CREATE INDEX IF NOT EXISTS idx_rules_project_branch ON rules(project, branch);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_branch ON sessions(project, branch);
 """
 
 
@@ -304,6 +321,21 @@ class SQLiteBackend(DatabaseBackend):
             USING vec0(item_id TEXT PRIMARY KEY, embedding float[{self.embedding_dim}])
         """)
         self.conn.commit()
+        self._migrate_add_branch()
+
+    def _migrate_add_branch(self) -> None:
+        """Add branch column to existing tables (idempotent for existing DBs)."""
+        assert self.conn is not None
+        tables = [
+            "sessions", "thoughts", "rules", "error_patterns",
+            "session_summaries", "thought_groups", "embedding_meta",
+        ]
+        for table in tables:
+            try:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN branch TEXT")
+            except sqlite3.OperationalError:
+                pass  # column already exists
+        self.conn.commit()
 
     # ── Primitives ──────────────────────────────────────────────────────
 
@@ -343,6 +375,7 @@ class SQLiteBackend(DatabaseBackend):
 
     def fts_search(
         self, table: str, query: str, project: Optional[str] = None,
+        branch: Optional[str] = None,
         include_archived: bool = False, limit: int = 50,
     ) -> list[dict]:
         fts_table = f"{table}_fts"
@@ -358,6 +391,9 @@ class SQLiteBackend(DatabaseBackend):
             if project:
                 q += " AND m.project=?"
                 params.append(project)
+            if branch:
+                q += " AND m.branch=?"
+                params.append(branch)
             if not include_archived and table in ("thoughts", "rules"):
                 q += " AND m.archived=0"
             q += " ORDER BY fts.rank LIMIT ?"
@@ -368,9 +404,9 @@ class SQLiteBackend(DatabaseBackend):
                 r["_fts_rank"] = abs(r["_fts_rank"])
             return rows
         except sqlite3.OperationalError:
-            return self._fallback_like_search(table, query, project, include_archived, limit)
+            return self._fallback_like_search(table, query, project, branch, include_archived, limit)
 
-    def fts_search_errors(self, query: str, project: Optional[str] = None, limit: int = 50) -> list[dict]:
+    def fts_search_errors(self, query: str, project: Optional[str] = None, branch: Optional[str] = None, limit: int = 50) -> list[dict]:
         fts_query = self._build_fts_query(query)
         try:
             q = """
@@ -383,6 +419,9 @@ class SQLiteBackend(DatabaseBackend):
             if project:
                 q += " AND m.project=?"
                 params.append(project)
+            if branch:
+                q += " AND m.branch=?"
+                params.append(branch)
             q += " ORDER BY fts.rank LIMIT ?"
             params.append(limit)
             rows = self.fetchall(q, params)
@@ -392,7 +431,7 @@ class SQLiteBackend(DatabaseBackend):
         except sqlite3.OperationalError:
             return []
 
-    def fts_search_sessions(self, query: str, project: Optional[str] = None, limit: int = 50) -> list[dict]:
+    def fts_search_sessions(self, query: str, project: Optional[str] = None, branch: Optional[str] = None, limit: int = 50) -> list[dict]:
         fts_query = self._build_fts_query(query)
         try:
             q = """
@@ -405,6 +444,9 @@ class SQLiteBackend(DatabaseBackend):
             if project:
                 q += " AND m.project=?"
                 params.append(project)
+            if branch:
+                q += " AND m.branch=?"
+                params.append(branch)
             q += " ORDER BY fts.rank LIMIT ?"
             params.append(limit)
             rows = self.fetchall(q, params)
@@ -444,7 +486,8 @@ class SQLiteBackend(DatabaseBackend):
 
     def vector_search(
         self, embedding: list[float], item_type: Optional[str] = None,
-        project: Optional[str] = None, limit: int = 20,
+        project: Optional[str] = None, branch: Optional[str] = None,
+        limit: int = 20,
     ) -> list[dict]:
         assert self.conn is not None
 
@@ -452,7 +495,7 @@ class SQLiteBackend(DatabaseBackend):
 
         # vec0 KNN query
         q = """
-            SELECT v.item_id, v.distance AS _distance, em.item_type, em.text_content, em.project
+            SELECT v.item_id, v.distance AS _distance, em.item_type, em.text_content, em.project, em.branch
             FROM embeddings_vec v
             JOIN embedding_meta em ON v.item_id = em.item_id
             WHERE v.embedding MATCH ? AND k = ?
@@ -461,12 +504,14 @@ class SQLiteBackend(DatabaseBackend):
 
         rows = [dict(r) for r in self.conn.execute(q, params).fetchall()]
 
-        # Post-filter by type/project (vec0 doesn't support JOINed WHERE in MATCH)
+        # Post-filter by type/project/branch (vec0 doesn't support JOINed WHERE in MATCH)
         results = []
         for r in rows:
             if item_type and r.get("item_type") != item_type:
                 continue
             if project and r.get("project") != project:
+                continue
+            if branch and r.get("branch") != branch:
                 continue
             results.append(r)
             if len(results) >= limit:
@@ -497,7 +542,7 @@ class SQLiteBackend(DatabaseBackend):
 
     def _fallback_like_search(
         self, table: str, query: str, project: Optional[str],
-        include_archived: bool, limit: int,
+        branch: Optional[str], include_archived: bool, limit: int,
     ) -> list[dict]:
         terms = query.split()
         if not terms:
@@ -519,6 +564,9 @@ class SQLiteBackend(DatabaseBackend):
         if project:
             q += " AND project=?"
             params.append(project)
+        if branch:
+            q += " AND branch=?"
+            params.append(branch)
         if not include_archived and table in ("thoughts", "rules"):
             q += " AND archived=0"
         q += f" LIMIT ?"
