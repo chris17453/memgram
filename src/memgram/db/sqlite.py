@@ -312,6 +312,7 @@ class SQLiteBackend(DatabaseBackend):
     def _init_schema(self) -> None:
         assert self.conn is not None
         self.conn.executescript(CORE_SCHEMA)
+        self._migrate_add_branch()  # must run before INDEXES (adds branch column)
         self.conn.executescript(FTS_SCHEMA)
         self.conn.executescript(FTS_TRIGGERS)
         self.conn.executescript(INDEXES)
@@ -321,7 +322,6 @@ class SQLiteBackend(DatabaseBackend):
             USING vec0(item_id TEXT PRIMARY KEY, embedding float[{self.embedding_dim}])
         """)
         self.conn.commit()
-        self._migrate_add_branch()
 
     def _migrate_add_branch(self) -> None:
         """Add branch column to existing tables (idempotent for existing DBs)."""
