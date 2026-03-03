@@ -1,0 +1,35 @@
+title: Memgram
+description: AI Memory Graph — persistent memory layer for AI assistants via MCP
+remote_theme: just-the-docs/just-the-docs
+
+url: "https://chris17453.github.io"
+baseurl: "/memgram"
+
+repository: chris17453/memgram
+
+search_enabled: true
+search.heading_level: 3
+
+color_scheme: dark
+
+heading_anchors: true
+
+nav_sort: case_insensitive
+
+aux_links:
+  "GitHub":
+    - "https://github.com/chris17453/memgram"
+
+footer_content: "Memgram &mdash; AI Memory Graph. Built with <a href=\"https://just-the-docs.com\">Just the Docs</a>."
+
+back_to_top: true
+back_to_top_text: "Back to top"
+
+plugins:
+  - jekyll-remote-theme
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
