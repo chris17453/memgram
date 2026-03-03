@@ -43,8 +43,18 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
     """Dispatch a tool call to the appropriate module handler."""
     import json
     from mcp.types import TextContent
+    from ..utils import normalize_name
 
     args = arguments or {}
+
+    # Normalize project names and keywords so variant spellings always match.
+    # e.g. 'oxide-os', 'oxide_os', 'OxideOS' all become 'oxideos'.
+    if "project" in args and args["project"] is not None:
+        args["project"] = normalize_name(args["project"])
+    if "keywords" in args and isinstance(args["keywords"], list):
+        args["keywords"] = [normalize_name(k) for k in args["keywords"]]
+    if "name" in args and args["name"] is not None and name in ("create_group", "get_group"):
+        args["name"] = normalize_name(args["name"])
 
     def _json_result(data):
         return [TextContent(type="text", text=json.dumps(data, indent=2, default=str))]

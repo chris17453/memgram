@@ -397,9 +397,12 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
 def main_export():
     """CLI entry point for export."""
     import argparse
+    from .db.sqlite import DEFAULT_DB_PATH
+
+    default_db = os.environ.get("MEMGRAM_DB_PATH", str(DEFAULT_DB_PATH))
     parser = argparse.ArgumentParser(description="Export memgram database as markdown files")
-    parser.add_argument("--db-path", type=str, default=os.environ.get("MEMGRAM_DB_PATH"),
-                        help="Path to SQLite database (default: ~/.memgram/memgram.db)")
+    parser.add_argument("--db-path", type=str, default=default_db,
+                        help=f"Path to SQLite database (default: {default_db})")
     parser.add_argument("-o", "--output", type=str, default="memgram-export",
                         help="Output directory (default: memgram-export)")
     args = parser.parse_args()

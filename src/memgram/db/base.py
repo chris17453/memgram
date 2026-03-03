@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from ..utils import new_id, now_iso
+from ..utils import new_id, normalize_name, now_iso
 
 
 class DatabaseBackend(ABC):
@@ -305,10 +305,10 @@ class MemgramDB:
         params.append(limit)
         rows = self.backend.fetchall(q, params)
         if keywords:
-            kw_set = {k.lower() for k in keywords}
+            kw_set = {normalize_name(k) for k in keywords}
             return [
                 r for r in rows
-                if {k.lower() for k in self.backend.decode_json(r.get("keywords", "[]"))} & kw_set
+                if {normalize_name(k) for k in self.backend.decode_json(r.get("keywords", "[]"))} & kw_set
             ]
         return rows
 
