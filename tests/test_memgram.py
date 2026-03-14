@@ -8,6 +8,7 @@ import tempfile
 import pytest
 
 from memgram.db import create_db
+from memgram.export import _slugify, export_markdown, rename_existing_exports
 from memgram.server import create_server
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
@@ -197,6 +198,16 @@ class TestVector:
         assert not db.backend.has_embeddings()
 
 
+class TestHealth:
+    def test_db_health(self, db):
+        diag = db.health()
+        assert diag["backend"] == "sqlite"
+        assert diag["connected"] is True
+        assert "journal_mode" in diag
+        assert "vec" in diag
+        assert "sessions" in diag["counts"]
+
+
 class TestGroups:
     def test_create_and_populate(self, db):
         t = db.add_thought("Auth thought")
@@ -253,6 +264,51 @@ class TestProjectSummary:
         assert json.loads(ps["tech_stack"]) == ["python", "jwt"]  # preserved
 
 
+class TestProjectMerge:
+    def test_merge_projects(self, db):
+        # target project with existing summary
+        db.update_project_summary("correct", summary="Canonical summary", tech_stack=["rust"])
+        db.add_thought("Keep", project="correct")
+
+        # source project (typo) with data
+        db.add_thought("Typo thought", project="corret")
+        db.add_rule("Typo rule", type="do", severity="critical", project="corret")
+        db.update_project_summary("corret", summary="Typo summary", tech_stack=["rust", "os"])
+
+        result = db.merge_projects("corret", "correct")
+        assert result["source"] == "corret"
+        assert result["target"] == "correct"
+        assert db.get_project_summary("corret") is None
+
+        ps = db.get_project_summary("correct")
+        assert ps["summary"] == "Canonical summary"
+        tech_stack = set(json.loads(ps["tech_stack"]))
+        assert {"rust", "os"} <= tech_stack
+
+        thoughts = db.search("Typo", project="correct")
+        assert any(t["_type"] == "thought" for t in thoughts)
+
+    def test_rename_project(self, db):
+        db.add_thought("Old name thought", project="oldname")
+        db.update_project_summary("oldname", summary="Old summary")
+        db.rename_project("oldname", "newname")
+
+        assert db.get_project_summary("oldname") is None
+        ps = db.get_project_summary("newname")
+        assert ps["project"] == "newname"
+        assert "Old summary" in ps.get("summary", "")
+
+
+class TestProjectListing:
+    def test_list_projects_includes_data_projects(self, db):
+        db.add_thought("No summary thought", project="oxide-os-oxide-")
+        projects = db.list_projects()
+        names = {p["project"] for p in projects}
+        assert "oxide-os-oxide-" in names
+        proj_entry = next(p for p in projects if p["project"] == "oxide-os-oxide-")
+        assert proj_entry["total_thoughts"] >= 1
+
+
 class TestSessionSummary:
     def test_create(self, db):
         s = db.create_session("copilot", "gpt-4")
@@ -262,6 +318,101 @@ class TestSessionSummary:
         )
         assert ss["session_id"] == s["id"]
         assert ss["next_session_hints"] == "Add tests"
+
+
+class TestExport:
+    def test_export_uses_slug_filenames(self, tmp_path):
+        db_path = tmp_path / "exp.db"
+        db = create_db("sqlite", db_path=db_path)
+        s = db.create_session("copilot", "gpt-4", project="proj", goal="My Session Goal")
+        db.add_thought("My Thought Title", session_id=s["id"], project="proj")
+        db.close()
+
+        out_dir = tmp_path / "out"
+        export_markdown(db_path=db_path, output_dir=out_dir)
+
+        thought_slug = _slugify("My Thought Title")
+        session_slug = _slugify("My Session Goal")
+        project_slug = _slugify("proj")
+        assert (out_dir / "thoughts" / f"{thought_slug}.md").exists()
+        assert (out_dir / "sessions" / f"{session_slug}.md").exists()
+        assert (out_dir / "projects" / f"{project_slug}.md").exists()
+
+        proj_text = (out_dir / "projects" / f"{project_slug}.md").read_text()
+        assert f"thoughts/{thought_slug}.md" in proj_text
+        assert f"sessions/{session_slug}.md" in proj_text
+
+
+class TestExportMigration:
+    def test_rename_existing_exports(self, tmp_path):
+        root = tmp_path / "memgram-export"
+        (root / "sessions").mkdir(parents=True)
+        (root / "thoughts").mkdir(parents=True)
+        (root / "rules").mkdir(parents=True)
+
+        session_id = "abcd1234"
+        session_md = root / "sessions" / f"{session_id}.md"
+        session_md.write_text(
+            "# Session: Demo Goal\n\n"
+            "| Field | Value |\n"
+            "|-------|-------|\n"
+            f"| ID | `{session_id}` |\n"
+            "| Agent | test |\n"
+            "| Model | test |\n",
+            encoding="utf-8",
+        )
+
+        thought_id = "t1"
+        thought_md = root / "thoughts" / f"{thought_id}.md"
+        thought_md.write_text(
+            "# Thought about Demo\n\n"
+            "| Field | Value |\n"
+            "|-------|-------|\n"
+            f"| ID | `{thought_id}` |\n"
+            "| Type | observation |\n"
+            f"| Session | [{session_id}](../sessions/{session_id}.md) |\n"
+            "\nDetails here\n",
+            encoding="utf-8",
+        )
+
+        rule_id = "r1"
+        rule_md = root / "rules" / f"{rule_id}.md"
+        rule_md.write_text(
+            "# Rule Title\n\n"
+            "| Field | Value |\n"
+            "|-------|-------|\n"
+            f"| ID | `{rule_id}` |\n"
+            f"| Session | [{session_id}](../sessions/{session_id}.md) |\n",
+            encoding="utf-8",
+        )
+
+        index_md = root / "index.md"
+        index_md.write_text(
+            "# Index\n\n"
+            f"- Session: [link](sessions/{session_id}.md)\n"
+            f"- Rule: [link](rules/{rule_id}.md)\n"
+            f"- Thought: [link](thoughts/{thought_id}.md)\n",
+            encoding="utf-8",
+        )
+
+        result = rename_existing_exports(output_dir=root)
+        assert result["renamed"] == 3
+
+        session_slug = _slugify("Demo Goal")
+        thought_slug = _slugify("Thought about Demo")
+        rule_slug = _slugify("Rule Title")
+
+        assert (root / "sessions" / f"{session_slug}.md").exists()
+        assert not session_md.exists()
+
+        updated_thought = (root / "thoughts" / f"{thought_slug}.md").read_text()
+        assert f"../sessions/{session_slug}.md" in updated_thought
+        assert "[Demo Goal]" in updated_thought
+
+        updated_index = index_md.read_text()
+        assert f"sessions/{session_slug}.md" in updated_index
+        assert f"rules/{rule_slug}.md" in updated_index
+        assert f"thoughts/{thought_slug}.md" in updated_index
 
 
 # ── MCP Tool Tests ──────────────────────────────────────────────────────────
@@ -310,6 +461,45 @@ class TestMCPTools:
             assert len(d["active_rules"]) >= 1
 
         asyncio.get_event_loop().run_until_complete(run())
+
+    def test_health_tool(self, mcp):
+        async def run():
+            d = await mcp("get_health", {})
+            assert d.get("backend") == "sqlite"
+            assert d.get("connected") is True
+            assert "vec" in d
+            assert "journal_mode" in d
+        asyncio.get_event_loop().run_until_complete(run())
+
+    def test_merge_projects_tool(self, mcp):
+        async def run():
+            await mcp("add_thought", {"summary": "Typo thought", "project": "typo"})
+            await mcp("add_rule", {"summary": "Typo rule", "type": "do", "severity": "critical", "project": "typo"})
+            await mcp("merge_projects", {"from_project": "typo", "to_project": "correct"})
+            ps = await mcp("get_project_summary", {"project": "correct"})
+            assert ps["project"] == "correct"
+            # counts should reflect merged data
+            assert ps["total_thoughts"] >= 1
+            assert ps["total_rules"] >= 1
+        asyncio.get_event_loop().run_until_complete(run())
+
+    def test_list_projects_cli(self, tmp_path):
+        # exercise CLI list-projects path
+        db_path = tmp_path / "cli.db"
+        db = create_db("sqlite", db_path=db_path)
+        db.add_thought("CLI proj", project="cliproj")
+        db.add_thought("Data-only proj", project="oxide-os-oxide-")
+        db.update_project_summary("cliproj", summary="CLI summary")
+        db.close()
+
+        import subprocess, sys, json, os
+        proc = subprocess.run(
+            [sys.executable, "-m", "memgram.server", "list-projects", "--db-path", str(db_path)],
+            capture_output=True, text=True, env=os.environ.copy(),
+        )
+        assert proc.returncode == 0
+        assert "cliproj" in proc.stdout
+        assert "oxide-os-oxide-" in proc.stdout
 
 
 # ── Branch Scoping Tests ─────────────────────────────────────────────────────

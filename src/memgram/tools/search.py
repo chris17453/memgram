@@ -217,6 +217,18 @@ TOOLS = [
             "required": ["item_id"],
         },
     ),
+    Tool(
+        name="merge_projects",
+        description="Merge all data from a source project into a target project (fix typos).",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "from_project": {"type": "string", "description": "Source project name to merge from"},
+                "to_project": {"type": "string", "description": "Target project name to merge into"},
+            },
+            "required": ["from_project", "to_project"],
+        },
+    ),
 ]
 
 
@@ -243,23 +255,36 @@ def register(server: Server, db: MemgramDB) -> None:
             return _json_result({"count": len(results), "results": results})
 
         elif name == "search_by_embedding":
+            has_embeddings = db.backend.has_embeddings()
             results = db.search_by_embedding(
                 embedding=args["embedding"],
                 project=args.get("project"),
                 type_filter=args.get("type_filter"),
                 limit=args.get("limit", 20),
             )
-            return _json_result({"count": len(results), "results": results})
+            return _json_result({
+                "count": len(results),
+                "results": results,
+                "vec_enabled": getattr(db.backend, "vec_enabled", None),
+                "has_embeddings": has_embeddings,
+            })
 
         elif name == "store_embedding":
-            db.store_embedding(
-                item_id=args["item_id"],
-                item_type=args["item_type"],
-                text_content=args["text_content"],
-                embedding=args["embedding"],
-                model_name=args["model_name"],
-            )
-            return _json_result({"status": "stored", "item_id": args["item_id"]})
+            try:
+                db.store_embedding(
+                    item_id=args["item_id"],
+                    item_type=args["item_type"],
+                    text_content=args["text_content"],
+                    embedding=args["embedding"],
+                    model_name=args["model_name"],
+                )
+                return _json_result({"status": "stored", "item_id": args["item_id"]})
+            except RuntimeError as exc:
+                return _json_result({
+                    "status": "failed",
+                    "error": str(exc),
+                    "vec_enabled": getattr(db.backend, "vec_enabled", None),
+                })
 
         # ── Retrieval ───────────────────────────────────────────────────
         elif name == "get_rules":
@@ -331,5 +356,9 @@ def register(server: Server, db: MemgramDB) -> None:
         elif name == "archive_item":
             result = db.archive_item(args["item_id"])
             return _json_result(result or {"error": "Item not found"})
+
+        elif name == "merge_projects":
+            result = db.merge_projects(args["from_project"], args["to_project"])
+            return _json_result(result)
 
         return _json_result({"error": f"Unknown tool: {name}"})

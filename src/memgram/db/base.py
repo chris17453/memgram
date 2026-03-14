@@ -97,6 +97,11 @@ class DatabaseBackend(ABC):
         """Check if the vector table has any data (to know if RAG is available)."""
         ...
 
+    @abstractmethod
+    def diagnostics(self) -> dict:
+        """Return backend health diagnostics (connectivity, pragmas, counts, vector status)."""
+        ...
+
     # ── Placeholder ─────────────────────────────────────────────────────
 
     @property
@@ -422,6 +427,37 @@ class MemgramDB:
             f"SELECT * FROM project_summaries WHERE project={self._p}", (project,),
         )
 
+    def list_projects(self) -> list[dict]:
+        """List all projects (including those without summaries) with counts."""
+        projects: set[str] = set()
+        tables = ["sessions", "thoughts", "rules", "error_patterns", "thought_groups", "project_summaries"]
+        for tbl in tables:
+            rows = self.backend.fetchall(f"SELECT DISTINCT project FROM {tbl} WHERE project IS NOT NULL")
+            projects.update(r["project"] for r in rows if r.get("project"))
+
+        p = self._p
+
+        def _count(table: str) -> int:
+            row = self.backend.fetchone(f"SELECT COUNT(*) AS cnt FROM {table} WHERE project={p}", (proj,))
+            return row["cnt"] if row else 0
+
+        results = []
+        for proj in sorted(projects):
+            summary_row = self.get_project_summary(proj)
+            entry = {
+                "project": proj,
+                "summary": summary_row.get("summary") if summary_row else "",
+                "tech_stack": summary_row.get("tech_stack") if summary_row else "[]",
+                "key_patterns": summary_row.get("key_patterns") if summary_row else "[]",
+                "active_goals": summary_row.get("active_goals") if summary_row else "[]",
+            }
+            entry["total_sessions"] = _count("sessions")
+            entry["total_thoughts"] = _count("thoughts")
+            entry["total_rules"] = _count("rules")
+            results.append(entry)
+
+        return results
+
     def update_project_summary(
         self, project: str, summary: Optional[str] = None,
         tech_stack: Optional[list[str]] = None,
@@ -471,6 +507,56 @@ class MemgramDB:
         return self.backend.fetchone(
             f"SELECT * FROM project_summaries WHERE project={p}", (project,),
         )
+
+    def merge_projects(self, source: str, target: str) -> dict:
+        """Merge all data from *source* project into *target* project (typo cleanup)."""
+        if not source or not target:
+            raise ValueError("source and target projects are required")
+        if source == target:
+            return {"source": source, "target": target, "updated": {}}
+
+        p = self._p
+        tables = [
+            "sessions", "thoughts", "rules", "error_patterns",
+            "session_summaries", "thought_groups", "embedding_meta",
+        ]
+        updated: dict[str, int] = {}
+        for tbl in tables:
+            self.backend.execute(
+                f"UPDATE {tbl} SET project={p} WHERE project={p}",
+                (target, source),
+            )
+            updated[tbl] = self.backend.last_rowcount()
+
+        src_summary = self.get_project_summary(source)
+        tgt_summary = self.get_project_summary(target)
+
+        def _merge_list(key: str) -> list[str]:
+            src = self.backend.decode_json(src_summary.get(key)) if src_summary else []
+            tgt = self.backend.decode_json(tgt_summary.get(key)) if tgt_summary else []
+            return sorted(set(tgt + src))
+
+        merged_summary = (
+            tgt_summary.get("summary") if (tgt_summary and tgt_summary.get("summary"))
+            else (src_summary.get("summary") if src_summary else "")
+        )
+
+        if src_summary:
+            self.backend.execute(f"DELETE FROM project_summaries WHERE project={p}", (source,))
+
+        self.update_project_summary(
+            target,
+            summary=merged_summary,
+            tech_stack=_merge_list("tech_stack"),
+            key_patterns=_merge_list("key_patterns"),
+            active_goals=_merge_list("active_goals"),
+        )
+
+        return {"source": source, "target": target, "updated": updated}
+
+    def rename_project(self, source: str, new_name: str) -> dict:
+        """Rename a project; if target exists, merge into it."""
+        return self.merge_projects(source, new_name)
 
     # ── Session Summaries ───────────────────────────────────────────────
 
@@ -697,6 +783,12 @@ class MemgramDB:
     def delete_embedding(self, item_id: str) -> None:
         """Remove embeddings for an item."""
         self.backend.delete_embedding(item_id)
+
+    # ── Health / Diagnostics ─────────────────────────────────────────────
+
+    def health(self) -> dict:
+        """Return backend-level diagnostics for tooling/health checks."""
+        return self.backend.diagnostics()
 
     # ── Resume Context ──────────────────────────────────────────────────
 

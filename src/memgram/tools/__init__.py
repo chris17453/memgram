@@ -6,9 +6,9 @@ from mcp.server import Server
 from mcp.types import Tool
 
 from ..db import MemgramDB
-from . import knowledge, search, sessions
+from . import health, knowledge, search, sessions
 
-ALL_TOOLS: list[Tool] = sessions.TOOLS + knowledge.TOOLS + search.TOOLS
+ALL_TOOLS: list[Tool] = sessions.TOOLS + knowledge.TOOLS + search.TOOLS + health.TOOLS
 
 
 def register_all(server: Server, db: MemgramDB) -> None:
@@ -22,7 +22,7 @@ def register_all(server: Server, db: MemgramDB) -> None:
     tool_handlers = {}
 
     # Build a name→(module, handler_factory) map
-    for mod in (sessions, knowledge, search):
+    for mod in (sessions, knowledge, search, health):
         for tool in mod.TOOLS:
             tool_handlers[tool.name] = mod
 
@@ -57,6 +57,10 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
         args["keywords"] = [normalize_name(k) for k in args["keywords"]]
     if "name" in args and args["name"] is not None and name in ("create_group", "get_group"):
         args["name"] = normalize_name(args["name"])
+    if "from_project" in args and args["from_project"] is not None:
+        args["from_project"] = normalize_name(args["from_project"])
+    if "to_project" in args and args["to_project"] is not None:
+        args["to_project"] = normalize_name(args["to_project"])
 
     def _json_result(data):
         return [TextContent(type="text", text=json.dumps(data, indent=2, default=str))]
@@ -214,5 +218,17 @@ async def _call_module_handler(mod, name: str, arguments: dict | None, db: Memgr
         elif name == "archive_item":
             result = db.archive_item(args["item_id"])
             return _json_result(result or {"error": "Item not found"})
+
+        elif name == "merge_projects":
+            result = db.merge_projects(args["from_project"], args["to_project"])
+            return _json_result(result)
+
+    # ── Health / Diagnostics ─────────────────────────────────────────────
+    elif mod is health:
+        if name == "get_health":
+            diagnostics = db.health()
+            if not args.get("include_counts", True):
+                diagnostics = {k: v for k, v in diagnostics.items() if k != "counts"}
+            return _json_result(diagnostics)
 
     return _json_result({"error": f"Unknown tool: {name}"})

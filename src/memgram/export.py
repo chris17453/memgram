@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional, Sequence
 
 from .db import create_db
 
@@ -28,6 +29,187 @@ def _bullet_list(items: list[str], indent: str = "") -> str:
 
 def _badge(label: str, value: str) -> str:
     return f"**{label}:** {value}"
+
+
+def _slugify(text: str, max_length: int = 80) -> str:
+    """Create a filesystem-safe slug: lowercase, dash-separated, trimmed length."""
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower())
+    slug = re.sub(r"-{2,}", "-", slug).strip("-")
+    if max_length and len(slug) > max_length:
+        slug = slug[:max_length].rstrip("-")
+    return slug
+
+
+def _build_slug_map(
+    items: Sequence,
+    label_getter: Callable[[Any], str | None],
+    key_getter: Callable[[Any], str] = lambda item: item["id"],
+) -> dict[str, str]:
+    """Build a stable slug map keyed by item id/key with collision handling."""
+    slugs: dict[str, str] = {}
+    used: set[str] = set()
+
+    for item in items:
+        key = str(key_getter(item))
+        raw_label = label_getter(item) or ""
+        base = _slugify(raw_label) or _slugify(key) or key.lower()
+        suffix = _slugify(key) or key.lower()
+
+        slug = base
+        if slug in used:
+            slug = f"{base}-{suffix[:6] or '1'}"
+            counter = 2
+            while slug in used:
+                slug = f"{base}-{suffix[:6] or '1'}-{counter}"
+                counter += 1
+
+        used.add(slug)
+        slugs[key] = slug
+
+    return slugs
+
+
+def _collect_projects(thoughts, rules, sessions, project_sums) -> set[str]:
+    projects: set[str] = set()
+    for t in thoughts:
+        if t.get("project"):
+            projects.add(t["project"])
+    for r in rules:
+        if r.get("project"):
+            projects.add(r["project"])
+    for s in sessions:
+        if s.get("project"):
+            projects.add(s["project"])
+    for ps in project_sums:
+        projects.add(ps["project"])
+    return projects
+
+
+def _build_slug_maps(thoughts, rules, errors, sessions, groups, project_names: set[str]) -> dict[str, dict[str, str]]:
+    return {
+        "thoughts": _build_slug_map(thoughts, lambda t: t.get("summary")),
+        "rules": _build_slug_map(rules, lambda r: r.get("summary")),
+        "errors": _build_slug_map(errors, lambda e: e.get("error_description")),
+        "sessions": _build_slug_map(sessions, lambda s: s.get("goal")),
+        "groups": _build_slug_map(groups, lambda g: g.get("name")),
+        "projects": _build_slug_map(
+            list(project_names),
+            label_getter=lambda name: name,
+            key_getter=lambda name: str(name),
+        ),
+    }
+
+
+def _parse_export_file(path: Path, item_type: str) -> dict[str, Any] | None:
+    """Parse an exported markdown file to extract its ID and label for slugging."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    if not lines:
+        return None
+
+    title = lines[0].lstrip("#").strip()
+    lower_title = title.lower()
+    label = title
+    if item_type == "sessions" and lower_title.startswith("session:"):
+        label = title.split(":", 1)[1].strip() or title
+    elif item_type == "errors" and lower_title.startswith("error:"):
+        label = title.split(":", 1)[1].strip() or title
+    elif item_type == "projects" and lower_title.startswith("project:"):
+        label = title.split(":", 1)[1].strip() or title
+    elif item_type == "groups" and lower_title.startswith("group:"):
+        label = title.split(":", 1)[1].strip() or title
+
+    id_match = re.search(r"\|\s*ID\s*\|\s*`([^`]+)`", text)
+    item_id = id_match.group(1).strip() if id_match else path.stem
+
+    return {"id": item_id, "label": label, "path": path}
+
+
+def rename_existing_exports(output_dir: str = "memgram-export") -> dict[str, int]:
+    """Rename legacy ID-named exports to slug filenames and rewrite internal links.
+
+    This is safe to run repeatedly; it will no-op when files already use slugs.
+    Returns a summary of renamed files and updated documents.
+    """
+    out = Path(output_dir)
+    if not out.exists():
+        raise FileNotFoundError(f"Export directory not found: {out}")
+
+    type_dirs = {
+        "sessions": out / "sessions",
+        "thoughts": out / "thoughts",
+        "rules": out / "rules",
+        "errors": out / "errors",
+        "groups": out / "groups",
+    }
+
+    parsed: dict[str, list[dict[str, Any]]] = {k: [] for k in type_dirs}
+    label_map: dict[str, str] = {}
+    for item_type, dir_path in type_dirs.items():
+        if not dir_path.exists():
+            continue
+        for md_path in dir_path.glob("*.md"):
+            info = _parse_export_file(md_path, item_type)
+            if not info:
+                continue
+            parsed[item_type].append(info)
+            label_map[info["id"]] = info["label"]
+
+    slug_maps = {
+        "sessions": _build_slug_map(parsed["sessions"], lambda i: i["label"]),
+        "thoughts": _build_slug_map(parsed["thoughts"], lambda i: i["label"]),
+        "rules": _build_slug_map(parsed["rules"], lambda i: i["label"]),
+        "errors": _build_slug_map(parsed["errors"], lambda i: i["label"]),
+        "groups": _build_slug_map(parsed["groups"], lambda i: i["label"]),
+    }
+
+    renamed = 0
+    for item_type, slug_map in slug_maps.items():
+        dir_path = type_dirs[item_type]
+        for info in parsed[item_type]:
+            item_id = info["id"]
+            slug = slug_map.get(item_id)
+            if not slug:
+                continue
+            current = info["path"]
+            target = dir_path / f"{slug}.md"
+            if current.resolve() == target.resolve():
+                continue
+            if target.exists() and target != current:
+                info["path"] = target  # assume slugged file already exists
+                continue
+            current.rename(target)
+            info["path"] = target
+            renamed += 1
+
+    def _rewrite_links(content: str) -> str:
+        updated = content
+        for item_type, slug_map in slug_maps.items():
+            for item_id, slug in slug_map.items():
+                updated = re.sub(
+                    fr"(\.\./{item_type}/){re.escape(item_id)}\.md",
+                    rf"\1{slug}.md",
+                    updated,
+                )
+                updated = re.sub(
+                    fr"({item_type}/){re.escape(item_id)}\.md",
+                    rf"\1{slug}.md",
+                    updated,
+                )
+                label = label_map.get(item_id)
+                if label:
+                    updated = updated.replace(f"[{item_id}]", f"[{label}]")
+        return updated
+
+    updated_docs = 0
+    for md_path in out.glob("**/*.md"):
+        original = md_path.read_text(encoding="utf-8")
+        rewritten = _rewrite_links(original)
+        if rewritten != original:
+            md_path.write_text(rewritten, encoding="utf-8")
+            updated_docs += 1
+
+    return {"renamed": renamed, "updated": updated_docs}
 
 
 def _fetch_all_data(db_path: Optional[str] = None, project: Optional[str] = None):
@@ -102,6 +284,22 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
     session_sums = data["session_sums"]
     project_sums = data["project_sums"]
     links = data["links"]
+    all_projects = _collect_projects(thoughts, rules, sessions, project_sums)
+    slug_maps = _build_slug_maps(thoughts, rules, errors, sessions, groups, all_projects)
+    thought_slugs = slug_maps["thoughts"]
+    rule_slugs = slug_maps["rules"]
+    error_slugs = slug_maps["errors"]
+    session_slugs = slug_maps["sessions"]
+    group_slugs = slug_maps["groups"]
+    project_slugs = slug_maps["projects"]
+    all_projects = _collect_projects(thoughts, rules, sessions, project_sums)
+    slug_maps = _build_slug_maps(thoughts, rules, errors, sessions, groups, all_projects)
+    thought_slugs = slug_maps["thoughts"]
+    rule_slugs = slug_maps["rules"]
+    error_slugs = slug_maps["errors"]
+    session_slugs = slug_maps["sessions"]
+    group_slugs = slug_maps["groups"]
+    project_slugs = slug_maps["projects"]
 
     # ── Index ───────────────────────────────────────────────────────────
 
@@ -125,7 +323,8 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
         for r in rules:
             pin = "📌 " if r["pinned"] else ""
             arc = "🗄️ " if r["archived"] else ""
-            idx.append(f"| {r['severity']} | {r['type']} | {arc}{pin}[{r['summary']}](rules/{r['id']}.md) | ×{r['reinforcement_count']} | {r.get('project') or 'global'} |")
+            r_slug = rule_slugs.get(r["id"], r["id"])
+            idx.append(f"| {r['severity']} | {r['type']} | {arc}{pin}[{r['summary']}](rules/{r_slug}.md) | ×{r['reinforcement_count']} | {r.get('project') or 'global'} |")
         idx.append("")
 
     # Recent sessions in index
@@ -135,14 +334,16 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
         idx.append("|------|-------|-------|---------|------|--------|")
         for s in sessions[:20]:
             date = (s.get("started_at") or "")[:10]
-            idx.append(f"| {date} | {s['agent_type']} | {s['model']} | {s.get('project') or '-'} | [{s.get('goal') or '-'}](sessions/{s['id']}.md) | {s['status']} |")
+            sess_slug = session_slugs.get(s["id"], s["id"])
+            idx.append(f"| {date} | {s['agent_type']} | {s['model']} | {s.get('project') or '-'} | [{s.get('goal') or '-'}](sessions/{sess_slug}.md) | {s['status']} |")
         idx.append("")
 
     # Projects in index
     if project_sums:
         idx.append("## Projects\n")
         for ps in project_sums:
-            idx.append(f"- [{ps['project']}](projects/{ps['project']}.md) — {ps['summary'][:80]}")
+            proj_slug = project_slugs.get(ps["project"], ps["project"])
+            idx.append(f"- [{ps['project']}](projects/{proj_slug}.md) — {ps['summary'][:80]}")
         idx.append("")
 
     (out / "index.md").write_text("\n".join(idx))
@@ -155,6 +356,7 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
         snap_by_session.setdefault(snap["session_id"], []).append(snap)
 
     for s in sessions:
+        sess_slug = session_slugs.get(s["id"], s["id"])
         lines = [f"# Session: {s.get('goal') or s['id']}\n"]
         lines.append(f"| Field | Value |")
         lines.append(f"|-------|-------|")
@@ -216,11 +418,12 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
                     lines.append("**Open Questions:**\n")
                     lines.append(_bullet_list(oq))
 
-        (out / "sessions" / f"{s['id']}.md").write_text("\n".join(lines))
+        (out / "sessions" / f"{sess_slug}.md").write_text("\n".join(lines))
 
     # ── Thoughts ────────────────────────────────────────────────────────
 
     for t in thoughts:
+        t_slug = thought_slugs.get(t["id"], t["id"])
         lines = [f"# {t['summary']}\n"]
         tags = []
         if t["pinned"]:
@@ -244,16 +447,18 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
         if files:
             lines.append(f"| Files | {', '.join(f'`{f}`' for f in files)} |")
         if t.get("session_id"):
-            lines.append(f"| Session | [{t['session_id']}](../sessions/{t['session_id']}.md) |")
+            sess_slug = session_slugs.get(str(t["session_id"]), str(t["session_id"]))
+            lines.append(f"| Session | [{t['session_id']}](../sessions/{sess_slug}.md) |")
         lines.append("")
         if t.get("content"):
             lines.append(f"## Content\n\n{t['content']}\n")
 
-        (out / "thoughts" / f"{t['id']}.md").write_text("\n".join(lines))
+        (out / "thoughts" / f"{t_slug}.md").write_text("\n".join(lines))
 
     # ── Rules ───────────────────────────────────────────────────────────
 
     for r in rules:
+        r_slug = rule_slugs.get(r["id"], r["id"])
         lines = [f"# {r['summary']}\n"]
         tags = []
         if r["pinned"]:
@@ -282,16 +487,18 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
         if files:
             lines.append(f"| Files | {', '.join(f'`{f}`' for f in files)} |")
         if r.get("session_id"):
-            lines.append(f"| Session | [{r['session_id']}](../sessions/{r['session_id']}.md) |")
+            sess_slug = session_slugs.get(str(r["session_id"]), str(r["session_id"]))
+            lines.append(f"| Session | [{r['session_id']}](../sessions/{sess_slug}.md) |")
         lines.append("")
         if r.get("content"):
             lines.append(f"## Details\n\n{r['content']}\n")
 
-        (out / "rules" / f"{r['id']}.md").write_text("\n".join(lines))
+        (out / "rules" / f"{r_slug}.md").write_text("\n".join(lines))
 
     # ── Error Patterns ──────────────────────────────────────────────────
 
     for e in errors:
+        e_slug = error_slugs.get(e["id"], e["id"])
         lines = [f"# Error: {e['error_description'][:80]}\n"]
         lines.append(f"| Field | Value |")
         lines.append(f"|-------|-------|")
@@ -306,9 +513,11 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
         if files:
             lines.append(f"| Files | {', '.join(f'`{f}`' for f in files)} |")
         if e.get("prevention_rule_id"):
-            lines.append(f"| Prevention Rule | [{e['prevention_rule_id']}](../rules/{e['prevention_rule_id']}.md) |")
+            rule_slug = rule_slugs.get(str(e["prevention_rule_id"]), str(e["prevention_rule_id"]))
+            lines.append(f"| Prevention Rule | [{e['prevention_rule_id']}](../rules/{rule_slug}.md) |")
         if e.get("session_id"):
-            lines.append(f"| Session | [{e['session_id']}](../sessions/{e['session_id']}.md) |")
+            sess_slug = session_slugs.get(str(e["session_id"]), str(e["session_id"]))
+            lines.append(f"| Session | [{e['session_id']}](../sessions/{sess_slug}.md) |")
         lines.append("")
         lines.append(f"## Error\n\n{e['error_description']}\n")
         if e.get("cause"):
@@ -316,11 +525,12 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
         if e.get("fix"):
             lines.append(f"## Fix\n\n{e['fix']}\n")
 
-        (out / "errors" / f"{e['id']}.md").write_text("\n".join(lines))
+        (out / "errors" / f"{e_slug}.md").write_text("\n".join(lines))
 
     # ── Groups ──────────────────────────────────────────────────────────
 
     for g in groups:
+        g_slug = group_slugs.get(g["id"], g["id"])
         members = db.backend.fetchall(
             f"SELECT * FROM group_members WHERE group_id={p}", (g["id"],),
         )
@@ -343,34 +553,27 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
                 # Fetch summary
                 table = {"thought": "thoughts", "rule": "rules", "error_pattern": "error_patterns"}.get(m["item_type"])
                 summary = ""
+                slug_lookup = {
+                    "thought": thought_slugs,
+                    "rule": rule_slugs,
+                    "error_pattern": error_slugs,
+                }.get(m["item_type"], {})
+                item_slug = slug_lookup.get(m["item_id"], m["item_id"])
                 if table:
                     row = db.backend.fetchone(f"SELECT * FROM {table} WHERE id={p}", (m["item_id"],))
                     if row:
                         summary = row.get("summary", row.get("error_description", ""))[:60]
-                lines.append(f"- [{m['item_type']}] [{summary}](../{d}/{m['item_id']}.md)")
+                lines.append(f"- [{m['item_type']}] [{summary}](../{d}/{item_slug}.md)")
             lines.append("")
 
-        (out / "groups" / f"{g['id']}.md").write_text("\n".join(lines))
+        (out / "groups" / f"{g_slug}.md").write_text("\n".join(lines))
 
     # ── Projects ────────────────────────────────────────────────────────
-
-    # Build a per-project view even if no project_summary exists
-    all_projects = set()
-    for t in thoughts:
-        if t.get("project"):
-            all_projects.add(t["project"])
-    for r in rules:
-        if r.get("project"):
-            all_projects.add(r["project"])
-    for s in sessions:
-        if s.get("project"):
-            all_projects.add(s["project"])
-    for ps in project_sums:
-        all_projects.add(ps["project"])
 
     ps_by_name = {ps["project"]: ps for ps in project_sums}
 
     for proj in sorted(all_projects):
+        proj_slug = project_slugs.get(proj, proj)
         lines = [f"# Project: {proj}\n"]
         ps = ps_by_name.get(proj)
         if ps:
@@ -397,7 +600,8 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
                 sev = {"critical": "🔴", "preference": "🟡", "context_dependent": "🔵"}.get(r["severity"], "")
                 typ = {"do": "✅", "dont": "❌", "context_dependent": "⚖️"}.get(r["type"], "")
                 pin = "📌 " if r["pinned"] else ""
-                lines.append(f"- {sev} {typ} {pin}[{r['summary']}](../rules/{r['id']}.md) (×{r['reinforcement_count']})")
+                r_slug = rule_slugs.get(r["id"], r["id"])
+                lines.append(f"- {sev} {typ} {pin}[{r['summary']}](../rules/{r_slug}.md) (×{r['reinforcement_count']})")
             lines.append("")
 
         # Project thoughts
@@ -406,7 +610,8 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
             lines.append("## Thoughts\n")
             for t in proj_thoughts[:50]:
                 pin = "📌 " if t["pinned"] else ""
-                lines.append(f"- [{t['type']}] {pin}[{t['summary']}](../thoughts/{t['id']}.md)")
+                t_slug = thought_slugs.get(t["id"], t["id"])
+                lines.append(f"- [{t['type']}] {pin}[{t['summary']}](../thoughts/{t_slug}.md)")
             lines.append("")
 
         # Project errors
@@ -414,7 +619,8 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
         if proj_errors:
             lines.append("## Error Patterns\n")
             for e in proj_errors:
-                lines.append(f"- [{e['error_description'][:60]}](../errors/{e['id']}.md)")
+                e_slug = error_slugs.get(e["id"], e["id"])
+                lines.append(f"- [{e['error_description'][:60]}](../errors/{e_slug}.md)")
             lines.append("")
 
         # Project sessions
@@ -425,10 +631,11 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
             lines.append("|------|-------|------|--------|")
             for s in proj_sessions[:20]:
                 date = (s.get("started_at") or "")[:10]
-                lines.append(f"| {date} | {s['agent_type']}/{s['model']} | [{s.get('goal') or '-'}](../sessions/{s['id']}.md) | {s['status']} |")
+                sess_slug = session_slugs.get(s["id"], s["id"])
+                lines.append(f"| {date} | {s['agent_type']}/{s['model']} | [{s.get('goal') or '-'}](../sessions/{sess_slug}.md) | {s['status']} |")
             lines.append("")
 
-        (out / "projects" / f"{proj}.md").write_text("\n".join(lines))
+        (out / "projects" / f"{proj_slug}.md").write_text("\n".join(lines))
 
     db.close()
 
@@ -546,7 +753,8 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
         for r in rules:
             pin = "📌 " if r["pinned"] else ""
             arc = "🗄️ " if r["archived"] else ""
-            idx.append(f"| {r['severity']} | {r['type']} | {arc}{pin}[{r['summary']}](rules/{r['id']}/) | ×{r['reinforcement_count']} | {r.get('project') or 'global'} |")
+            r_slug = rule_slugs.get(r["id"], r["id"])
+            idx.append(f"| {r['severity']} | {r['type']} | {arc}{pin}[{r['summary']}](rules/{r_slug}/) | ×{r['reinforcement_count']} | {r.get('project') or 'global'} |")
         idx.append("")
 
     if sessions:
@@ -555,13 +763,15 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
         idx.append("|------|-------|-------|---------|------|--------|")
         for s in sessions[:20]:
             date = (s.get("started_at") or "")[:10]
-            idx.append(f"| {date} | {s['agent_type']} | {s['model']} | {s.get('project') or '-'} | [{s.get('goal') or '-'}](sessions/{s['id']}/) | {s['status']} |")
+            sess_slug = session_slugs.get(s["id"], s["id"])
+            idx.append(f"| {date} | {s['agent_type']} | {s['model']} | {s.get('project') or '-'} | [{s.get('goal') or '-'}](sessions/{sess_slug}/) | {s['status']} |")
         idx.append("")
 
     if project_sums:
         idx.append("## Projects\n")
         for ps in project_sums:
-            idx.append(f"- [{ps['project']}](projects/{ps['project']}/) — {ps['summary'][:80]}")
+            proj_slug = project_slugs.get(ps["project"], ps["project"])
+            idx.append(f"- [{ps['project']}](projects/{proj_slug}/) — {ps['summary'][:80]}")
         idx.append("")
 
     (out / "index.md").write_text("\n".join(idx))
@@ -592,6 +802,7 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
         snap_by_session.setdefault(snap["session_id"], []).append(snap)
 
     for i, s in enumerate(sessions):
+        sess_slug = session_slugs.get(s["id"], s["id"])
         title = (s.get("goal") or s["id"])[:80]
         fm = _front_matter(
             layout="default", title=title,
@@ -656,11 +867,12 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
                     lines.append("**Open Questions:**\n")
                     lines.append(_bullet_list(oq))
 
-        (out / "sessions" / f"{s['id']}.md").write_text("\n".join(lines))
+        (out / "sessions" / f"{sess_slug}.md").write_text("\n".join(lines))
 
     # ── Thoughts ───────────────────────────────────────────────────────
 
     for i, t in enumerate(thoughts):
+        t_slug = thought_slugs.get(t["id"], t["id"])
         title = t["summary"][:80].replace('"', '\\"')
         fm = _front_matter(
             layout="default", title=title,
@@ -689,16 +901,18 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
         if files:
             lines.append(f"| Files | {', '.join(f'`{f}`' for f in files)} |")
         if t.get("session_id"):
-            lines.append(f"| Session | [{t['session_id']}](../sessions/{t['session_id']}/) |")
+            sess_slug = session_slugs.get(str(t["session_id"]), str(t["session_id"]))
+            lines.append(f"| Session | [{t['session_id']}](../sessions/{sess_slug}/) |")
         lines.append("")
         if t.get("content"):
             lines.append(f"## Content\n\n{t['content']}\n")
 
-        (out / "thoughts" / f"{t['id']}.md").write_text("\n".join(lines))
+        (out / "thoughts" / f"{t_slug}.md").write_text("\n".join(lines))
 
     # ── Rules ──────────────────────────────────────────────────────────
 
     for i, r in enumerate(rules):
+        r_slug = rule_slugs.get(r["id"], r["id"])
         title = r["summary"][:80].replace('"', '\\"')
         fm = _front_matter(
             layout="default", title=title,
@@ -732,16 +946,18 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
         if files:
             lines.append(f"| Files | {', '.join(f'`{f}`' for f in files)} |")
         if r.get("session_id"):
-            lines.append(f"| Session | [{r['session_id']}](../sessions/{r['session_id']}/) |")
+            sess_slug = session_slugs.get(str(r["session_id"]), str(r["session_id"]))
+            lines.append(f"| Session | [{r['session_id']}](../sessions/{sess_slug}/) |")
         lines.append("")
         if r.get("content"):
             lines.append(f"## Details\n\n{r['content']}\n")
 
-        (out / "rules" / f"{r['id']}.md").write_text("\n".join(lines))
+        (out / "rules" / f"{r_slug}.md").write_text("\n".join(lines))
 
     # ── Error Patterns ─────────────────────────────────────────────────
 
     for i, e in enumerate(errors):
+        e_slug = error_slugs.get(e["id"], e["id"])
         title = e["error_description"][:80].replace('"', '\\"')
         fm = _front_matter(
             layout="default", title=title,
@@ -761,9 +977,11 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
         if files:
             lines.append(f"| Files | {', '.join(f'`{f}`' for f in files)} |")
         if e.get("prevention_rule_id"):
-            lines.append(f"| Prevention Rule | [{e['prevention_rule_id']}](../rules/{e['prevention_rule_id']}/) |")
+            rule_slug = rule_slugs.get(str(e["prevention_rule_id"]), str(e["prevention_rule_id"]))
+            lines.append(f"| Prevention Rule | [{e['prevention_rule_id']}](../rules/{rule_slug}/) |")
         if e.get("session_id"):
-            lines.append(f"| Session | [{e['session_id']}](../sessions/{e['session_id']}/) |")
+            sess_slug = session_slugs.get(str(e["session_id"]), str(e["session_id"]))
+            lines.append(f"| Session | [{e['session_id']}](../sessions/{sess_slug}/) |")
         lines.append("")
         lines.append(f"## Error\n\n{e['error_description']}\n")
         if e.get("cause"):
@@ -771,11 +989,12 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
         if e.get("fix"):
             lines.append(f"## Fix\n\n{e['fix']}\n")
 
-        (out / "errors" / f"{e['id']}.md").write_text("\n".join(lines))
+        (out / "errors" / f"{e_slug}.md").write_text("\n".join(lines))
 
     # ── Groups ─────────────────────────────────────────────────────────
 
     for i, g in enumerate(groups):
+        g_slug = group_slugs.get(g["id"], g["id"])
         members = db.backend.fetchall(
             f"SELECT * FROM group_members WHERE group_id={p}", (g["id"],),
         )
@@ -802,33 +1021,27 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
                 d = type_dir.get(m["item_type"], "thoughts")
                 table = {"thought": "thoughts", "rule": "rules", "error_pattern": "error_patterns"}.get(m["item_type"])
                 summary = ""
+                slug_lookup = {
+                    "thought": thought_slugs,
+                    "rule": rule_slugs,
+                    "error_pattern": error_slugs,
+                }.get(m["item_type"], {})
+                item_slug = slug_lookup.get(m["item_id"], m["item_id"])
                 if table:
                     row = db.backend.fetchone(f"SELECT * FROM {table} WHERE id={p}", (m["item_id"],))
                     if row:
                         summary = row.get("summary", row.get("error_description", ""))[:60]
-                lines.append(f"- [{m['item_type']}] [{summary}](../{d}/{m['item_id']}/) ")
+                lines.append(f"- [{m['item_type']}] [{summary}](../{d}/{item_slug}/) ")
             lines.append("")
 
-        (out / "groups" / f"{g['id']}.md").write_text("\n".join(lines))
+        (out / "groups" / f"{g_slug}.md").write_text("\n".join(lines))
 
     # ── Projects ───────────────────────────────────────────────────────
-
-    all_projects = set()
-    for t in thoughts:
-        if t.get("project"):
-            all_projects.add(t["project"])
-    for r in rules:
-        if r.get("project"):
-            all_projects.add(r["project"])
-    for s in sessions:
-        if s.get("project"):
-            all_projects.add(s["project"])
-    for ps in project_sums:
-        all_projects.add(ps["project"])
 
     ps_by_name = {ps["project"]: ps for ps in project_sums}
 
     for i, proj in enumerate(sorted(all_projects)):
+        proj_slug = project_slugs.get(proj, proj)
         fm = _front_matter(
             layout="default", title=f"Project: {proj}",
             parent="Projects", nav_order=i + 1,
@@ -858,7 +1071,8 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
                 sev = {"critical": "🔴", "preference": "🟡", "context_dependent": "🔵"}.get(r["severity"], "")
                 typ = {"do": "✅", "dont": "❌", "context_dependent": "⚖️"}.get(r["type"], "")
                 pin = "📌 " if r["pinned"] else ""
-                lines.append(f"- {sev} {typ} {pin}[{r['summary']}](../rules/{r['id']}/) (×{r['reinforcement_count']})")
+                r_slug = rule_slugs.get(r["id"], r["id"])
+                lines.append(f"- {sev} {typ} {pin}[{r['summary']}](../rules/{r_slug}/) (×{r['reinforcement_count']})")
             lines.append("")
 
         proj_thoughts = [t for t in thoughts if t.get("project") == proj]
@@ -866,14 +1080,16 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
             lines.append("## Thoughts\n")
             for t in proj_thoughts[:50]:
                 pin = "📌 " if t["pinned"] else ""
-                lines.append(f"- [{t['type']}] {pin}[{t['summary']}](../thoughts/{t['id']}/)")
+                t_slug = thought_slugs.get(t["id"], t["id"])
+                lines.append(f"- [{t['type']}] {pin}[{t['summary']}](../thoughts/{t_slug}/)")
             lines.append("")
 
         proj_errors = [e for e in errors if e.get("project") == proj]
         if proj_errors:
             lines.append("## Error Patterns\n")
             for e in proj_errors:
-                lines.append(f"- [{e['error_description'][:60]}](../errors/{e['id']}/)")
+                e_slug = error_slugs.get(e["id"], e["id"])
+                lines.append(f"- [{e['error_description'][:60]}](../errors/{e_slug}/)")
             lines.append("")
 
         proj_sessions = [s for s in sessions if s.get("project") == proj]
@@ -883,10 +1099,11 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
             lines.append("|------|-------|------|--------|")
             for s in proj_sessions[:20]:
                 date = (s.get("started_at") or "")[:10]
-                lines.append(f"| {date} | {s['agent_type']}/{s['model']} | [{s.get('goal') or '-'}](../sessions/{s['id']}/) | {s['status']} |")
+                sess_slug = session_slugs.get(s["id"], s["id"])
+                lines.append(f"| {date} | {s['agent_type']}/{s['model']} | [{s.get('goal') or '-'}](../sessions/{sess_slug}/) | {s['status']} |")
             lines.append("")
 
-        (out / "projects" / f"{proj}.md").write_text("\n".join(lines))
+        (out / "projects" / f"{proj_slug}.md").write_text("\n".join(lines))
 
     db.close()
 

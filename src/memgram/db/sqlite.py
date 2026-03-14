@@ -289,6 +289,7 @@ class SQLiteBackend(DatabaseBackend):
         self.embedding_dim = embedding_dim
         self.conn: sqlite3.Connection | None = None
         self._last_rowcount = 0
+        self.vec_enabled = False
 
     # ── Lifecycle ───────────────────────────────────────────────────────
 
@@ -300,9 +301,14 @@ class SQLiteBackend(DatabaseBackend):
         self.conn.execute("PRAGMA foreign_keys=ON")
         # Load sqlite-vec
         self.conn.enable_load_extension(True)
-        import sqlite_vec
-        sqlite_vec.load(self.conn)
-        self.conn.enable_load_extension(False)
+        try:
+            import sqlite_vec
+            sqlite_vec.load(self.conn)
+            self.vec_enabled = True
+        except Exception:
+            self.vec_enabled = False
+        finally:
+            self.conn.enable_load_extension(False)
 
     def close(self) -> None:
         if self.conn:
@@ -317,10 +323,11 @@ class SQLiteBackend(DatabaseBackend):
         self.conn.executescript(FTS_TRIGGERS)
         self.conn.executescript(INDEXES)
         # sqlite-vec virtual table for vector search
-        self.conn.execute(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS embeddings_vec
-            USING vec0(item_id TEXT PRIMARY KEY, embedding float[{self.embedding_dim}])
-        """)
+        if self.vec_enabled:
+            self.conn.execute(f"""
+                CREATE VIRTUAL TABLE IF NOT EXISTS embeddings_vec
+                USING vec0(item_id TEXT PRIMARY KEY, embedding float[{self.embedding_dim}])
+            """)
         self.conn.commit()
 
     def _migrate_add_branch(self) -> None:
@@ -463,6 +470,8 @@ class SQLiteBackend(DatabaseBackend):
         embedding: list[float], model_name: str,
     ) -> None:
         assert self.conn is not None
+        if not self.vec_enabled:
+            raise RuntimeError("sqlite-vec is not available; install sqlite-vec to enable embeddings.")
         from ..utils import now_iso
         import struct
 
@@ -490,6 +499,8 @@ class SQLiteBackend(DatabaseBackend):
         limit: int = 20,
     ) -> list[dict]:
         assert self.conn is not None
+        if not self.vec_enabled:
+            return []
 
         vec_blob = _float_list_to_blob(embedding)
 
@@ -520,14 +531,98 @@ class SQLiteBackend(DatabaseBackend):
 
     def delete_embedding(self, item_id: str) -> None:
         assert self.conn is not None
-        self.conn.execute("DELETE FROM embeddings_vec WHERE item_id=?", (item_id,))
+        if self.vec_enabled:
+            self.conn.execute("DELETE FROM embeddings_vec WHERE item_id=?", (item_id,))
         self.conn.execute("DELETE FROM embedding_meta WHERE item_id=?", (item_id,))
         self.conn.commit()
 
     def has_embeddings(self) -> bool:
         assert self.conn is not None
+        if not self.vec_enabled:
+            return False
         row = self.conn.execute("SELECT COUNT(*) AS cnt FROM embedding_meta").fetchone()
         return row["cnt"] > 0 if row else False
+
+    def diagnostics(self) -> dict:
+        assert self.conn is not None
+        info: dict[str, Any] = {
+            "backend": "sqlite",
+            "db_path": str(self.db_path),
+            "connected": True,
+            "journal_mode": None,
+            "wal_enabled": False,
+            "foreign_keys": None,
+            "vec": {"enabled": self.vec_enabled},
+            "counts": {},
+            "fts": {},
+            "warnings": [],
+        }
+
+        try:
+            self.conn.execute("SELECT 1")
+        except Exception as exc:  # pragma: no cover - connectivity failure path
+            info["connected"] = False
+            info["error"] = str(exc)
+            info["status"] = "error"
+            return info
+
+        try:
+            jm_row = self.conn.execute("PRAGMA journal_mode").fetchone()
+            info["journal_mode"] = jm_row[0] if jm_row else None
+            info["wal_enabled"] = str(info["journal_mode"]).lower() == "wal"
+        except Exception as exc:
+            info["warnings"].append(f"journal_mode check failed: {exc}")
+
+        try:
+            fk_row = self.conn.execute("PRAGMA foreign_keys").fetchone()
+            info["foreign_keys"] = bool(fk_row[0]) if fk_row else False
+        except Exception as exc:
+            info["warnings"].append(f"foreign_keys check failed: {exc}")
+
+        tables = [
+            "sessions", "thoughts", "rules", "error_patterns",
+            "session_summaries", "compaction_snapshots", "project_summaries",
+            "thought_groups", "group_members", "embedding_meta",
+        ]
+        counts: dict[str, Any] = {}
+        for tbl in tables:
+            try:
+                row = self.conn.execute(f"SELECT COUNT(*) AS cnt FROM {tbl}").fetchone()
+                counts[tbl] = row["cnt"] if row else 0
+            except Exception as exc:
+                counts[tbl] = None
+                info["warnings"].append(f"{tbl} count failed: {exc}")
+        info["counts"] = counts
+
+        vec_info: dict[str, Any] = {"enabled": self.vec_enabled}
+        try:
+            row = self.conn.execute("SELECT COUNT(*) AS cnt FROM embedding_meta").fetchone()
+            vec_info["meta_rows"] = row["cnt"] if row else 0
+        except Exception as exc:
+            vec_info["meta_error"] = str(exc)
+        if self.vec_enabled:
+            try:
+                row = self.conn.execute("SELECT COUNT(*) AS cnt FROM embeddings_vec").fetchone()
+                vec_info["vec_rows"] = row["cnt"] if row else 0
+            except Exception as exc:
+                vec_info["vec_error"] = str(exc)
+                info["warnings"].append(f"embeddings_vec check failed: {exc}")
+        info["vec"] = vec_info
+
+        fts_tables = ["thoughts_fts", "rules_fts", "error_patterns_fts", "session_summaries_fts"]
+        fts_status: dict[str, str] = {}
+        for tbl in fts_tables:
+            try:
+                self.conn.execute(f"SELECT COUNT(*) FROM {tbl} LIMIT 1")
+                fts_status[tbl] = "ok"
+            except Exception as exc:
+                fts_status[tbl] = f"error: {exc}"
+                info["warnings"].append(f"{tbl} unavailable: {exc}")
+        info["fts"] = fts_status
+        info["fts_ok"] = all(v == "ok" for v in fts_status.values()) if fts_status else True
+
+        info["status"] = "ok" if info["connected"] and not info["warnings"] else "degraded"
+        return info
 
     # ── Helpers ─────────────────────────────────────────────────────────
 
