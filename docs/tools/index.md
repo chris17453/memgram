@@ -1,6 +1,6 @@
 # Tools Reference
 
-Memgram provides 24 MCP tools organized into five categories.
+Memgram provides 26 MCP tools organized into five categories.
 
 ## Overview
 
@@ -24,12 +24,14 @@ Memgram provides 24 MCP tools organized into five categories.
 | 16 | [`get_related`](search.md#get_related) | Search | — | Items linked via graph |
 | 17 | [`get_project_summary`](projects.md#get_project_summary) | Projects | — | Get living project overview |
 | 18 | [`update_project_summary`](projects.md#update_project_summary) | Projects | — | Update project overview |
-| 19 | [`create_group`](groups.md#create_group) | Groups | yes | Create a named cluster |
-| 20 | [`add_to_group`](groups.md#add_to_group) | Groups | — | Add item to group |
-| 21 | [`remove_from_group`](groups.md#remove_from_group) | Groups | — | Remove item from group |
-| 22 | [`get_group`](groups.md#get_group) | Groups | yes | Get group with members |
-| 23 | [`pin_item`](maintenance.md#pin_item) | Maintenance | — | Pin/unpin for resume context |
-| 24 | [`archive_item`](maintenance.md#archive_item) | Maintenance | — | Archive (exclude from search) |
+| 19 | [`merge_projects`](projects.md#merge_projects) | Projects | — | Merge one project into another (typo cleanup) |
+| 20 | [`create_group`](groups.md#create_group) | Groups | yes | Create a named cluster |
+| 21 | [`add_to_group`](groups.md#add_to_group) | Groups | — | Add item to group |
+| 22 | [`remove_from_group`](groups.md#remove_from_group) | Groups | — | Remove item from group |
+| 23 | [`get_group`](groups.md#get_group) | Groups | yes | Get group with members |
+| 24 | [`pin_item`](maintenance.md#pin_item) | Maintenance | — | Pin/unpin for resume context |
+| 25 | [`archive_item`](maintenance.md#archive_item) | Maintenance | — | Archive (exclude from search) |
+| 26 | [`get_health`](maintenance.md#get_health) | Maintenance | — | Database health/diagnostics |
 
 **Branch column**: "yes" means the tool accepts a `branch` parameter for scoped operations.
 
@@ -38,6 +40,6 @@ Memgram provides 24 MCP tools organized into five categories.
 - [Session Tools](sessions.md) — `start_session`, `end_session`, `save_snapshot`, `get_resume_context`
 - [Knowledge Tools](knowledge.md) — `add_thought`, `update_thought`, `add_rule`, `reinforce_rule`, `add_error_pattern`, `link_items`
 - [Search Tools](search.md) — `search`, `search_by_embedding`, `store_embedding`, `get_rules`, `get_session_history`, `get_related`
-- [Project Tools](projects.md) — `get_project_summary`, `update_project_summary`
+- [Project Tools](projects.md) — `get_project_summary`, `update_project_summary`, `merge_projects`
 - [Group Tools](groups.md) — `create_group`, `add_to_group`, `remove_from_group`, `get_group`
-- [Maintenance Tools](maintenance.md) — `pin_item`, `archive_item`
+- [Maintenance & Health](maintenance.md) — `pin_item`, `archive_item`, `get_health`

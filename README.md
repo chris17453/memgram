@@ -13,9 +13,11 @@ A persistent memory layer for AI assistants, built as an [MCP](https://modelcont
 - **Error patterns** — failure knowledge that prevents repeated mistakes
 - **FTS5 full-text search** with relevance scoring (recency + access + severity + pinned)
 - **sqlite-vec vector search** for RAG-style semantic retrieval
+- **Health diagnostics** — WAL/foreign-key checks, vector availability, table counts
 - **Thought groups** — cluster related items together
 - **Project summaries** — living overviews that auto-update
-- **Markdown export** — dump the entire database as linked markdown files
+- **Markdown export** — linked markdown with human-readable slugs (no more opaque IDs)
+- **Project cleanup** — list, merge, or rename projects to fix typos
 - **Abstracted DB layer** — SQLite now, PostgreSQL/pgvector ready
 
 ## Quick Start
@@ -45,7 +47,11 @@ memgram export -o memgram-export
 | Command | Description |
 |---------|-------------|
 | `memgram serve` | Run the MCP server over stdio (default when no subcommand given) |
-| `memgram export` | Export the database as a tree of linked markdown files |
+| `memgram export` | Export the database as a tree of linked markdown files (slug filenames) |
+| `memgram migrate-exports` | Rename legacy ID-based export files to slugs and fix links |
+| `memgram list-projects` | List all projects with counts (even if no summary exists) |
+| `memgram merge-projects <from> <to>` | Merge all data from one project into another (typo cleanup) |
+| `memgram rename-project <from> <to>` | Rename a project (merges if the target already exists) |
 
 Global flags (`--db-path`) go before the subcommand; subcommand-specific flags go after.
 

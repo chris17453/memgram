@@ -1,6 +1,6 @@
 # Markdown Export
 
-The `memgram export` command dumps the entire database as a tree of linked markdown files. Useful for auditing, sharing, or backing up your knowledge base.
+The `memgram export` command dumps the entire database as a tree of linked markdown files with human-readable slugs (no opaque IDs). Useful for auditing, sharing, or backing up your knowledge base.
 
 ## Usage
 
@@ -19,19 +19,19 @@ memgram --db-path /path/to/memgram.db export -o ./my-export
 
 ```
 memgram-export/
-|-- index.md               # Overview with stats, rules summary, recent sessions
+|-- index.md                     # Overview with stats, rules summary, recent sessions
 |-- sessions/
-|   \-- <id>.md            # One file per session (with snapshots and summaries)
+|   \-- <session-slug>.md        # One file per session (with snapshots and summaries)
 |-- thoughts/
-|   \-- <id>.md            # One file per thought
+|   \-- <thought-slug>.md        # One file per thought
 |-- rules/
-|   \-- <id>.md            # One file per rule
+|   \-- <rule-slug>.md           # One file per rule
 |-- errors/
-|   \-- <id>.md            # One file per error pattern
+|   \-- <error-slug>.md          # One file per error pattern
 |-- groups/
-|   \-- <id>.md            # One file per group (with member links)
+|   \-- <group-slug>.md          # One file per group (with member links)
 \-- projects/
-    \-- <project>.md       # Per-project view (rules, thoughts, errors, sessions)
+    \-- <project-slug>.md        # Per-project view (rules, thoughts, errors, sessions)
 ```
 
 ## What Each File Contains
@@ -83,6 +83,12 @@ An aggregated view of everything in a project:
 - All error patterns (with links)
 - All sessions (last 20, in table format)
 
+## Filenames
+
+- Slugs are lowercase, spaces become dashes, non-alphanumerics are stripped, and names are capped at 80 characters.
+- Collisions are resolved with numeric suffixes (`-2`, `-3`, ...).
+- Links inside files always point to the slugged filenames.
+
 ## Cross-Linking
 
 All files use relative markdown links to connect to related items:
@@ -92,6 +98,16 @@ All files use relative markdown links to connect to related items:
 - Error patterns link to their prevention rule
 - Group members link to their detail files
 - Project pages link to all associated items
+
+## Migrating Legacy Exports
+
+If you have an older export with ID-based filenames, convert it in place:
+
+```bash
+memgram migrate-exports -i ./memgram-export
+```
+
+All filenames are rewritten to slugs and internal links are updated. Safe to re-run.
 
 ## File Count
 

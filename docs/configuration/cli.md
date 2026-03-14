@@ -1,6 +1,6 @@
 # CLI Reference
 
-Memgram provides two subcommands: `serve` (default) and `export`.
+Memgram provides five subcommands: `serve` (default), `export`, `migrate-exports`, `list-projects`, `merge-projects`, and `rename-project`.
 
 ## Usage
 
@@ -53,7 +53,49 @@ memgram --db-path /tmp/test.db export -o ./my-export
 |------|---------|-------------|
 | `-o`, `--output DIR` | `memgram-export` | Output directory |
 
-See the [Export guide](../guides/export.md) for details on the output structure.
+See the [Export guide](../guides/export.md) for details on the slugged output structure.
+
+### `migrate-exports`
+
+Rewrite legacy ID-based export filenames to human-readable slugs and fix links in place.
+
+```bash
+memgram migrate-exports
+memgram migrate-exports -i ./memgram-export
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-i`, `--input DIR` | `memgram-export` | Existing export directory to migrate |
+
+Idempotent — re-running is safe; only legacy filenames are rewritten.
+
+### `list-projects`
+
+List all projects with counts, including projects that only exist in data tables (no summary).
+
+```bash
+memgram list-projects
+memgram list-projects --db-path /tmp/test.db
+```
+
+### `merge-projects`
+
+Merge all data from a source project into a target project (useful for typo cleanup).
+
+```bash
+memgram merge-projects oxide-os oxideos
+memgram merge-projects oldname newname --db-path /tmp/test.db
+```
+
+### `rename-project`
+
+Rename a project; if the target already exists, the data is merged.
+
+```bash
+memgram rename-project oxide-os-oxide- oxideos
+memgram rename-project oldname newname --db-path /tmp/test.db
+```
 
 ## Environment Variables
 

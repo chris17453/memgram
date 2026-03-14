@@ -1,6 +1,6 @@
-# Maintenance Tools
+# Maintenance & Health Tools
 
-Two tools for managing item lifecycle: pinning and archiving.
+Three tools for managing item lifecycle and checking database health.
 
 ## `pin_item`
 
@@ -34,3 +34,34 @@ Archive a thought or rule. Archived items are excluded from search results by de
 | `item_id` | string | **yes** | — | ID of the thought or rule |
 
 Archiving is a soft delete — the item remains in the database but is filtered out of normal operations. There is no unarchive tool; use `update_thought` with `archived: false` to restore a thought.
+
+## `get_health`
+
+Report database health: connectivity, WAL mode, foreign key status, vector availability, and per-table counts.
+
+### Parameters
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `include_counts` | boolean | no | `true` | When `false`, omits per-table row counts |
+
+### Example Response
+
+```json
+{
+  "backend": "sqlite",
+  "journal_mode": "wal",
+  "foreign_keys": 1,
+  "vec_enabled": true,
+  "counts": {
+    "sessions": 12,
+    "thoughts": 45,
+    "rules": 8,
+    "error_patterns": 2,
+    "groups": 1,
+    "links": 14,
+    "projects": 3
+  },
+  "warnings": []
+}
+```

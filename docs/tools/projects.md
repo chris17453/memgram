@@ -1,6 +1,6 @@
 # Project Tools
 
-Two tools for managing living project summaries.
+Three tools for managing living project summaries and fixing project typos.
 
 ## `get_project_summary`
 
@@ -55,5 +55,34 @@ Only provided fields are updated. Omitted fields retain their current values.
   "tech_stack": ["python", "fastapi", "sqlalchemy", "jwt", "oauth"],
   "key_patterns": ["Repository pattern", "Pydantic validation", "PKCE flow for OAuth"],
   "active_goals": ["Add GitHub OAuth provider", "Add rate limiting"]
+}
+```
+
+## `merge_projects`
+
+Merge all data from a source project into a target project (handy for cleaning up typos or consolidating duplicates). Also merges project summaries and recomputes counts.
+
+### Parameters
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `from_project` | string | **yes** | — | Source project to merge from |
+| `to_project` | string | **yes** | — | Target project to merge into |
+
+### Example Response
+
+```json
+{
+  "source": "oxide-os-oxide-",
+  "target": "oxideos",
+  "updated": {
+    "sessions": 0,
+    "thoughts": 5,
+    "rules": 1,
+    "error_patterns": 0,
+    "session_summaries": 0,
+    "thought_groups": 0,
+    "embedding_meta": 0
+  }
 }
 ```
