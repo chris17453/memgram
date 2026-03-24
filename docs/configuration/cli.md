@@ -1,6 +1,6 @@
 # CLI Reference
 
-Memgram provides five subcommands: `serve` (default), `export`, `migrate-exports`, `list-projects`, `merge-projects`, and `rename-project`.
+Memgram provides nine subcommands: `serve` (default), `export`, `export-web`, `migrate-exports`, `list-projects`, `merge-projects`, `rename-project`, `agent-stats`, and `seed-instructions`.
 
 ## Usage
 
@@ -46,14 +46,38 @@ Export the entire database as a tree of linked markdown files.
 ```bash
 memgram export
 memgram export -o ./my-export
+memgram export --project myapp
 memgram --db-path /tmp/test.db export -o ./my-export
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-o`, `--output DIR` | `memgram-export` | Output directory |
+| `--project NAME` | all | Export only a specific project |
 
 See the [Export guide](../guides/export.md) for details on the slugged output structure.
+
+### `export-web`
+
+Export the database as a navigable Jekyll HTML website (GitHub Pages ready). No build step needed — just open the output or serve it.
+
+```bash
+memgram export-web
+memgram export-web -o ./my-site
+memgram export-web --project myapp
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o`, `--output DIR` | `memgram-web` | Output directory |
+| `--project NAME` | all | Export only a specific project |
+
+After export:
+
+```bash
+python -m http.server -d memgram-web
+# or just open memgram-web/index.html
+```
 
 ### `migrate-exports`
 
@@ -96,6 +120,39 @@ Rename a project; if the target already exists, the data is merged.
 memgram rename-project oxide-os-oxide- oxideos
 memgram rename-project oldname newname --db-path /tmp/test.db
 ```
+
+### `agent-stats`
+
+Show contribution statistics broken down by AI agent type and model.
+
+```bash
+memgram agent-stats
+memgram agent-stats --project myapp
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project NAME` | all | Filter stats to a specific project |
+
+Output shows sessions, thoughts, rules, and errors per agent with first/last seen dates.
+
+### `seed-instructions`
+
+Seed instructions from a markdown file into the database. Splits the file on `## ` headings and creates one instruction section per heading.
+
+```bash
+memgram seed-instructions
+memgram seed-instructions -f ./my-instructions.md
+memgram seed-instructions --scope project --project myapp
+memgram seed-instructions --replace
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-f`, `--file PATH` | `INSTRUCTIONS.md` | Path to instructions markdown file |
+| `--project NAME` | all | Scope instructions to a specific project |
+| `--scope SCOPE` | `global` | `global`, `project`, or `branch` |
+| `--replace` | off | Deactivate existing instructions in this scope before seeding |
 
 ## Environment Variables
 

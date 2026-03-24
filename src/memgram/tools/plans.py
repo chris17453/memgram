@@ -39,7 +39,7 @@ TOOLS = [
                 "due_date": {"type": "string", "description": "Target completion date (ISO 8601)"},
                 "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
             },
-            "required": ["title"],
+            "required": ["title", "project"],
         },
     ),
     Tool(

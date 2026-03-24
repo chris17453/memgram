@@ -53,6 +53,27 @@ nav:
     - Project Tools: tools/projects.md
     - Group Tools: tools/groups.md
     - Maintenance Tools: tools/maintenance.md
+    - Plan Tools: tools/plans.md
+    - Spec Tools: tools/specs.md
+    - Feature Tools: tools/features.md
+    - Component Tools: tools/components.md
+    - People Tools: tools/people.md
+    - Team Tools: tools/teams.md
+    - Instruction Tools: tools/instructions.md
+    - Attachment Tools: tools/attachments.md
+    - Ticket Tools: tools/tickets.md
+    - Endpoint Tools: tools/endpoints.md
+    - Credential Tools: tools/credentials.md
+    - Environment Tools: tools/environments.md
+    - Deployment Tools: tools/deployments.md
+    - Build Tools: tools/builds.md
+    - Incident Tools: tools/incidents.md
+    - Dependency Tools: tools/dependencies.md
+    - Runbook Tools: tools/runbooks.md
+    - Decision Tools: tools/decisions.md
+    - Diagram Tools: tools/diagrams.md
+    - Comment Tools: tools/comments.md
+    - Audit Tools: tools/audit.md
   - Data Model:
     - data-model/index.md
     - Schema Reference: data-model/schema.md

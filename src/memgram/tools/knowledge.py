@@ -38,7 +38,7 @@ TOOLS = [
                 "associated_files": {"type": "array", "items": {"type": "string"}, "description": "Related file paths"},
                 "pinned": {"type": "boolean", "description": "Pin to always load in this project's context", "default": False},
             },
-            "required": ["summary", "session_id"],
+            "required": ["summary", "project"],
         },
     ),
     Tool(
@@ -93,7 +93,7 @@ TOOLS = [
                 "associated_files": {"type": "array", "items": {"type": "string"}},
                 "pinned": {"type": "boolean", "default": False},
             },
-            "required": ["summary", "type", "severity", "session_id"],
+            "required": ["summary", "type", "severity", "project"],
         },
     ),
     Tool(
@@ -133,7 +133,7 @@ TOOLS = [
                 "keywords": {"type": "array", "items": {"type": "string"}},
                 "associated_files": {"type": "array", "items": {"type": "string"}},
             },
-            "required": ["error_description", "session_id"],
+            "required": ["error_description", "project"],
         },
     ),
     Tool(

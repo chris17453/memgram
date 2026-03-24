@@ -9,7 +9,7 @@ src/memgram/
 |-- server.py              # MCP server entry point (stdio) + CLI subcommands
 |-- models.py              # Data models (dataclasses)
 |-- utils.py               # ID generation, timestamps, name normalization
-|-- export.py              # Markdown export (memgram export)
+|-- export.py              # Markdown + HTML export (memgram export / export-web)
 |-- db/
 |   |-- __init__.py        # create_db() factory
 |   |-- base.py            # DatabaseBackend ABC + MemgramDB business logic
@@ -18,17 +18,41 @@ src/memgram/
     |-- __init__.py        # Tool registration & dispatch (normalization choke point)
     |-- sessions.py        # Session management tool definitions
     |-- knowledge.py       # Knowledge management tool definitions
-    \-- search.py          # Search/retrieval/groups/maintenance tool definitions
+    |-- search.py          # Search/retrieval/groups tool definitions
+    |-- health.py          # Health and agent stats tool definitions
+    |-- plans.py           # Plan management tool definitions
+    |-- specs.py           # Spec management tool definitions
+    |-- features.py        # Feature tracking tool definitions
+    |-- components.py      # Component tracking tool definitions
+    |-- people.py          # People/contact tool definitions
+    |-- teams.py           # Team management tool definitions
+    |-- tickets.py         # Ticket tracking tool definitions
+    |-- instructions.py    # Agent instructions tool definitions
+    |-- attachments.py     # Attachment (URL/file ref) tool definitions
+    |-- endpoints.py       # API endpoint tool definitions
+    |-- credentials.py     # Secret reference tool definitions
+    |-- environments.py    # Environment tool definitions
+    |-- deployments.py     # Deployment record tool definitions
+    |-- builds.py          # CI/CD build tool definitions
+    |-- incidents.py       # Incident tracking tool definitions
+    |-- dependencies.py    # External dependency tool definitions
+    |-- runbooks.py        # Operational runbook tool definitions
+    |-- decisions.py       # ADR (decision record) tool definitions
+    |-- comments.py        # Threaded comment tool definitions
+    \-- audit.py           # Audit log tool definitions
 ```
 
 ## Layers
 
 ### CLI Entry Point (`server.py`)
 
-The `main()` function uses `argparse` with two subcommands:
+The `main()` function uses `argparse` with subcommands:
 
 - **`serve`** (default) — starts the MCP server over stdio via `asyncio.run(run_stdio())`
-- **`export`** — dumps the database as linked markdown files
+- **`export`** — dumps the database as linked markdown files (with optional `--project` filter)
+- **`export-web`** — dumps the database as a navigable Jekyll HTML website
+- **`agent-stats`** — shows contribution statistics by AI agent type and model
+- **`list-projects`**, **`merge-projects`**, **`rename-project`** — project management
 
 Global flags like `--db-path` go before the subcommand. Subcommand flags like `--embedding-dim` go after.
 
@@ -48,9 +72,15 @@ This is the **normalization choke point** for the entire system. All tool calls 
 
 Tool definitions live in three modules:
 
-- `sessions.py` — 4 session management tools
-- `knowledge.py` — 6 knowledge management tools
-- `search.py` — 14 search, retrieval, group, and maintenance tools
+- `sessions.py` — session management tools
+- `knowledge.py` — knowledge management tools (thoughts, rules, errors, links)
+- `search.py` — search, retrieval, and group tools
+- `health.py` — health and reporting tools (`get_health`, `get_agent_stats`)
+- `plans.py`, `specs.py`, `features.py`, `components.py`, `people.py`, `teams.py`, `tickets.py` — project management tools
+- `endpoints.py`, `credentials.py`, `environments.py`, `deployments.py`, `builds.py` — infrastructure/DevOps tools
+- `incidents.py`, `dependencies.py`, `runbooks.py`, `decisions.py` — operations/architecture tools
+- `instructions.py` — agent instruction management tools
+- `attachments.py`, `comments.py`, `audit.py` — cross-cutting tools (any entity)
 
 Each module exports a `TOOLS` list (MCP `Tool` objects with JSON schemas) and a `register()` function. The dispatch in `__init__.py` merges them into a single handler.
 

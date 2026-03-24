@@ -13,8 +13,10 @@ TOOLS = [
     Tool(
         name="start_session",
         description=(
-            "Start a new memgram session. Call this at the beginning of every conversation. "
-            "Returns the session ID plus resume context (last session summary, pinned items, active rules)."
+            "Start a new memgram session. Call this FIRST at the beginning of every conversation. "
+            "Returns the session ID plus resume context (last session summary, pinned items, active rules). "
+            "IMPORTANT: Save the returned session.id and pass it as session_id to ALL subsequent "
+            "add_thought, add_rule, and add_error_pattern calls. Without it, items lose agent attribution."
         ),
         inputSchema={
             "type": "object",
@@ -25,7 +27,7 @@ TOOLS = [
                 "branch": {"type": "string", "description": "Git branch name (optional, for branch-scoped context)"},
                 "goal": {"type": "string", "description": "What this session aims to accomplish"},
             },
-            "required": ["agent_type", "model"],
+            "required": ["agent_type", "model", "project"],
         },
     ),
     Tool(

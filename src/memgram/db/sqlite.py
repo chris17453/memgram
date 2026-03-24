@@ -281,6 +281,247 @@ CREATE TABLE IF NOT EXISTS plan_tasks (
     updated_at TEXT NOT NULL,
     completed_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS instructions (
+    id TEXT PRIMARY KEY,
+    section TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    scope TEXT NOT NULL DEFAULT 'global',
+    project TEXT,
+    branch TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tickets (
+    id TEXT PRIMARY KEY,
+    ticket_number TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',
+    priority TEXT NOT NULL DEFAULT 'medium',
+    type TEXT NOT NULL DEFAULT 'task',
+    assignee_id TEXT,
+    reporter_id TEXT,
+    project TEXT,
+    branch TEXT,
+    session_id TEXT REFERENCES sessions(id),
+    parent_id TEXT REFERENCES tickets(id),
+    tags TEXT NOT NULL DEFAULT '[]',
+    due_date TEXT,
+    resolved_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS attachments (
+    id TEXT PRIMARY KEY,
+    entity_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    url TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    type TEXT NOT NULL DEFAULT 'link',
+    mime_type TEXT,
+    description TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS endpoints (
+    id TEXT PRIMARY KEY,
+    method TEXT NOT NULL DEFAULT 'GET',
+    path TEXT NOT NULL,
+    base_url TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    auth_type TEXT NOT NULL DEFAULT 'none',
+    rate_limit TEXT,
+    request_schema TEXT NOT NULL DEFAULT '{}',
+    response_schema TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'active',
+    project TEXT,
+    branch TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS credentials (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'api_key',
+    provider TEXT NOT NULL DEFAULT '',
+    vault_path TEXT,
+    env_var TEXT,
+    description TEXT NOT NULL DEFAULT '',
+    project TEXT,
+    last_rotated TEXT,
+    expires_at TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS environments (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'development',
+    url TEXT,
+    description TEXT NOT NULL DEFAULT '',
+    project TEXT,
+    config TEXT NOT NULL DEFAULT '{}',
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS deployments (
+    id TEXT PRIMARY KEY,
+    version TEXT NOT NULL,
+    environment_id TEXT REFERENCES environments(id),
+    status TEXT NOT NULL DEFAULT 'pending',
+    strategy TEXT NOT NULL DEFAULT 'rolling',
+    description TEXT NOT NULL DEFAULT '',
+    project TEXT,
+    branch TEXT,
+    session_id TEXT REFERENCES sessions(id),
+    deployed_by TEXT,
+    rollback_to TEXT REFERENCES deployments(id),
+    deployed_at TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS builds (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    pipeline TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    trigger_type TEXT NOT NULL DEFAULT 'push',
+    commit_sha TEXT,
+    branch TEXT,
+    artifact_url TEXT,
+    duration_seconds INTEGER,
+    project TEXT,
+    session_id TEXT REFERENCES sessions(id),
+    started_at TEXT,
+    finished_at TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS incidents (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'p3',
+    status TEXT NOT NULL DEFAULT 'investigating',
+    description TEXT NOT NULL DEFAULT '',
+    root_cause TEXT,
+    resolution TEXT,
+    timeline TEXT NOT NULL DEFAULT '[]',
+    project TEXT,
+    lead_id TEXT,
+    started_at TEXT,
+    resolved_at TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS dependencies (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL DEFAULT '',
+    type TEXT NOT NULL DEFAULT 'library',
+    source TEXT,
+    license TEXT,
+    description TEXT NOT NULL DEFAULT '',
+    project TEXT,
+    pinned_version TEXT,
+    latest_version TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS runbooks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    steps TEXT NOT NULL DEFAULT '[]',
+    trigger_conditions TEXT,
+    project TEXT,
+    last_executed TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS decisions (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'proposed',
+    context TEXT NOT NULL DEFAULT '',
+    options TEXT NOT NULL DEFAULT '[]',
+    outcome TEXT,
+    consequences TEXT,
+    project TEXT,
+    branch TEXT,
+    session_id TEXT REFERENCES sessions(id),
+    author_id TEXT,
+    superseded_by TEXT REFERENCES decisions(id),
+    decided_at TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS comments (
+    id TEXT PRIMARY KEY,
+    entity_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    author TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    parent_id TEXT REFERENCES comments(id),
+    project TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS diagrams (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    diagram_type TEXT NOT NULL DEFAULT 'mermaid',
+    definition TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    data_source TEXT,
+    project TEXT,
+    branch TEXT,
+    session_id TEXT REFERENCES sessions(id),
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id TEXT PRIMARY KEY,
+    entity_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    action TEXT NOT NULL,
+    field_changed TEXT,
+    old_value TEXT,
+    new_value TEXT,
+    actor TEXT,
+    project TEXT,
+    created_at TEXT NOT NULL
+);
 """
 
 FTS_SCHEMA = """
@@ -315,6 +556,58 @@ CREATE VIRTUAL TABLE IF NOT EXISTS features_fts USING fts5(
 CREATE VIRTUAL TABLE IF NOT EXISTS components_fts USING fts5(
     id UNINDEXED, name, description, tags,
     content='components', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS tickets_fts USING fts5(
+    id UNINDEXED, ticket_number, title, description, tags,
+    content='tickets', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS instructions_fts USING fts5(
+    id UNINDEXED, section, title, content, tags,
+    content='instructions', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS endpoints_fts USING fts5(
+    id UNINDEXED, method, path, description, tags,
+    content='endpoints', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS credentials_fts USING fts5(
+    id UNINDEXED, name, provider, description, tags,
+    content='credentials', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS environments_fts USING fts5(
+    id UNINDEXED, name, description, tags,
+    content='environments', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS deployments_fts USING fts5(
+    id UNINDEXED, version, description, tags,
+    content='deployments', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS builds_fts USING fts5(
+    id UNINDEXED, name, pipeline, tags,
+    content='builds', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS incidents_fts USING fts5(
+    id UNINDEXED, title, description, root_cause, resolution, tags,
+    content='incidents', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS dependencies_fts USING fts5(
+    id UNINDEXED, name, description, tags,
+    content='dependencies', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS runbooks_fts USING fts5(
+    id UNINDEXED, title, description, trigger_conditions, tags,
+    content='runbooks', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS decisions_fts USING fts5(
+    id UNINDEXED, title, context, outcome, consequences, tags,
+    content='decisions', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS diagrams_fts USING fts5(
+    id UNINDEXED, title, description, definition, tags,
+    content='diagrams', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS comments_fts USING fts5(
+    id UNINDEXED, author, content, tags,
+    content='comments', content_rowid='rowid'
 );
 """
 
@@ -438,6 +731,201 @@ CREATE TRIGGER IF NOT EXISTS components_au AFTER UPDATE ON components BEGIN
     INSERT INTO components_fts(rowid, id, name, description, tags)
     VALUES (new.rowid, new.id, new.name, new.description, new.tags);
 END;
+
+CREATE TRIGGER IF NOT EXISTS tickets_ai AFTER INSERT ON tickets BEGIN
+    INSERT INTO tickets_fts(rowid, id, ticket_number, title, description, tags)
+    VALUES (new.rowid, new.id, new.ticket_number, new.title, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS tickets_ad AFTER DELETE ON tickets BEGIN
+    INSERT INTO tickets_fts(tickets_fts, rowid, id, ticket_number, title, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.ticket_number, old.title, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS tickets_au AFTER UPDATE ON tickets BEGIN
+    INSERT INTO tickets_fts(tickets_fts, rowid, id, ticket_number, title, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.ticket_number, old.title, old.description, old.tags);
+    INSERT INTO tickets_fts(rowid, id, ticket_number, title, description, tags)
+    VALUES (new.rowid, new.id, new.ticket_number, new.title, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS instructions_ai AFTER INSERT ON instructions BEGIN
+    INSERT INTO instructions_fts(rowid, id, section, title, content, tags)
+    VALUES (new.rowid, new.id, new.section, new.title, new.content, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS instructions_ad AFTER DELETE ON instructions BEGIN
+    INSERT INTO instructions_fts(instructions_fts, rowid, id, section, title, content, tags)
+    VALUES ('delete', old.rowid, old.id, old.section, old.title, old.content, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS instructions_au AFTER UPDATE ON instructions BEGIN
+    INSERT INTO instructions_fts(instructions_fts, rowid, id, section, title, content, tags)
+    VALUES ('delete', old.rowid, old.id, old.section, old.title, old.content, old.tags);
+    INSERT INTO instructions_fts(rowid, id, section, title, content, tags)
+    VALUES (new.rowid, new.id, new.section, new.title, new.content, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS endpoints_ai AFTER INSERT ON endpoints BEGIN
+    INSERT INTO endpoints_fts(rowid, id, method, path, description, tags)
+    VALUES (new.rowid, new.id, new.method, new.path, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS endpoints_ad AFTER DELETE ON endpoints BEGIN
+    INSERT INTO endpoints_fts(endpoints_fts, rowid, id, method, path, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.method, old.path, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS endpoints_au AFTER UPDATE ON endpoints BEGIN
+    INSERT INTO endpoints_fts(endpoints_fts, rowid, id, method, path, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.method, old.path, old.description, old.tags);
+    INSERT INTO endpoints_fts(rowid, id, method, path, description, tags)
+    VALUES (new.rowid, new.id, new.method, new.path, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS credentials_ai AFTER INSERT ON credentials BEGIN
+    INSERT INTO credentials_fts(rowid, id, name, provider, description, tags)
+    VALUES (new.rowid, new.id, new.name, new.provider, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS credentials_ad AFTER DELETE ON credentials BEGIN
+    INSERT INTO credentials_fts(credentials_fts, rowid, id, name, provider, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.provider, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS credentials_au AFTER UPDATE ON credentials BEGIN
+    INSERT INTO credentials_fts(credentials_fts, rowid, id, name, provider, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.provider, old.description, old.tags);
+    INSERT INTO credentials_fts(rowid, id, name, provider, description, tags)
+    VALUES (new.rowid, new.id, new.name, new.provider, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS environments_ai AFTER INSERT ON environments BEGIN
+    INSERT INTO environments_fts(rowid, id, name, description, tags)
+    VALUES (new.rowid, new.id, new.name, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS environments_ad AFTER DELETE ON environments BEGIN
+    INSERT INTO environments_fts(environments_fts, rowid, id, name, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS environments_au AFTER UPDATE ON environments BEGIN
+    INSERT INTO environments_fts(environments_fts, rowid, id, name, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.description, old.tags);
+    INSERT INTO environments_fts(rowid, id, name, description, tags)
+    VALUES (new.rowid, new.id, new.name, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS deployments_ai AFTER INSERT ON deployments BEGIN
+    INSERT INTO deployments_fts(rowid, id, version, description, tags)
+    VALUES (new.rowid, new.id, new.version, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS deployments_ad AFTER DELETE ON deployments BEGIN
+    INSERT INTO deployments_fts(deployments_fts, rowid, id, version, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.version, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS deployments_au AFTER UPDATE ON deployments BEGIN
+    INSERT INTO deployments_fts(deployments_fts, rowid, id, version, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.version, old.description, old.tags);
+    INSERT INTO deployments_fts(rowid, id, version, description, tags)
+    VALUES (new.rowid, new.id, new.version, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS builds_ai AFTER INSERT ON builds BEGIN
+    INSERT INTO builds_fts(rowid, id, name, pipeline, tags)
+    VALUES (new.rowid, new.id, new.name, new.pipeline, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS builds_ad AFTER DELETE ON builds BEGIN
+    INSERT INTO builds_fts(builds_fts, rowid, id, name, pipeline, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.pipeline, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS builds_au AFTER UPDATE ON builds BEGIN
+    INSERT INTO builds_fts(builds_fts, rowid, id, name, pipeline, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.pipeline, old.tags);
+    INSERT INTO builds_fts(rowid, id, name, pipeline, tags)
+    VALUES (new.rowid, new.id, new.name, new.pipeline, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS incidents_ai AFTER INSERT ON incidents BEGIN
+    INSERT INTO incidents_fts(rowid, id, title, description, root_cause, resolution, tags)
+    VALUES (new.rowid, new.id, new.title, new.description, new.root_cause, new.resolution, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS incidents_ad AFTER DELETE ON incidents BEGIN
+    INSERT INTO incidents_fts(incidents_fts, rowid, id, title, description, root_cause, resolution, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.description, old.root_cause, old.resolution, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS incidents_au AFTER UPDATE ON incidents BEGIN
+    INSERT INTO incidents_fts(incidents_fts, rowid, id, title, description, root_cause, resolution, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.description, old.root_cause, old.resolution, old.tags);
+    INSERT INTO incidents_fts(rowid, id, title, description, root_cause, resolution, tags)
+    VALUES (new.rowid, new.id, new.title, new.description, new.root_cause, new.resolution, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS dependencies_ai AFTER INSERT ON dependencies BEGIN
+    INSERT INTO dependencies_fts(rowid, id, name, description, tags)
+    VALUES (new.rowid, new.id, new.name, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS dependencies_ad AFTER DELETE ON dependencies BEGIN
+    INSERT INTO dependencies_fts(dependencies_fts, rowid, id, name, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS dependencies_au AFTER UPDATE ON dependencies BEGIN
+    INSERT INTO dependencies_fts(dependencies_fts, rowid, id, name, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.description, old.tags);
+    INSERT INTO dependencies_fts(rowid, id, name, description, tags)
+    VALUES (new.rowid, new.id, new.name, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS runbooks_ai AFTER INSERT ON runbooks BEGIN
+    INSERT INTO runbooks_fts(rowid, id, title, description, trigger_conditions, tags)
+    VALUES (new.rowid, new.id, new.title, new.description, new.trigger_conditions, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS runbooks_ad AFTER DELETE ON runbooks BEGIN
+    INSERT INTO runbooks_fts(runbooks_fts, rowid, id, title, description, trigger_conditions, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.description, old.trigger_conditions, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS runbooks_au AFTER UPDATE ON runbooks BEGIN
+    INSERT INTO runbooks_fts(runbooks_fts, rowid, id, title, description, trigger_conditions, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.description, old.trigger_conditions, old.tags);
+    INSERT INTO runbooks_fts(rowid, id, title, description, trigger_conditions, tags)
+    VALUES (new.rowid, new.id, new.title, new.description, new.trigger_conditions, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS decisions_ai AFTER INSERT ON decisions BEGIN
+    INSERT INTO decisions_fts(rowid, id, title, context, outcome, consequences, tags)
+    VALUES (new.rowid, new.id, new.title, new.context, new.outcome, new.consequences, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS decisions_ad AFTER DELETE ON decisions BEGIN
+    INSERT INTO decisions_fts(decisions_fts, rowid, id, title, context, outcome, consequences, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.context, old.outcome, old.consequences, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS decisions_au AFTER UPDATE ON decisions BEGIN
+    INSERT INTO decisions_fts(decisions_fts, rowid, id, title, context, outcome, consequences, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.context, old.outcome, old.consequences, old.tags);
+    INSERT INTO decisions_fts(rowid, id, title, context, outcome, consequences, tags)
+    VALUES (new.rowid, new.id, new.title, new.context, new.outcome, new.consequences, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS diagrams_ai AFTER INSERT ON diagrams BEGIN
+    INSERT INTO diagrams_fts(rowid, id, title, description, definition, tags)
+    VALUES (new.rowid, new.id, new.title, new.description, new.definition, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS diagrams_ad AFTER DELETE ON diagrams BEGIN
+    INSERT INTO diagrams_fts(diagrams_fts, rowid, id, title, description, definition, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.description, old.definition, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS diagrams_au AFTER UPDATE ON diagrams BEGIN
+    INSERT INTO diagrams_fts(diagrams_fts, rowid, id, title, description, definition, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.description, old.definition, old.tags);
+    INSERT INTO diagrams_fts(rowid, id, title, description, definition, tags)
+    VALUES (new.rowid, new.id, new.title, new.description, new.definition, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS comments_ai AFTER INSERT ON comments BEGIN
+    INSERT INTO comments_fts(rowid, id, author, content, tags)
+    VALUES (new.rowid, new.id, new.author, new.content, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS comments_ad AFTER DELETE ON comments BEGIN
+    INSERT INTO comments_fts(comments_fts, rowid, id, author, content, tags)
+    VALUES ('delete', old.rowid, old.id, old.author, old.content, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS comments_au AFTER UPDATE ON comments BEGIN
+    INSERT INTO comments_fts(comments_fts, rowid, id, author, content, tags)
+    VALUES ('delete', old.rowid, old.id, old.author, old.content, old.tags);
+    INSERT INTO comments_fts(rowid, id, author, content, tags)
+    VALUES (new.rowid, new.id, new.author, new.content, new.tags);
+END;
 """
 
 INDEXES = """
@@ -498,6 +986,71 @@ CREATE INDEX IF NOT EXISTS idx_people_type ON people(type);
 CREATE INDEX IF NOT EXISTS idx_teams_project ON teams(project);
 CREATE INDEX IF NOT EXISTS idx_teams_lead ON teams(lead_id);
 CREATE INDEX IF NOT EXISTS idx_team_members_person ON team_members(person_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_project ON tickets(project);
+CREATE INDEX IF NOT EXISTS idx_tickets_branch ON tickets(branch);
+CREATE INDEX IF NOT EXISTS idx_tickets_project_branch ON tickets(project, branch);
+CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
+CREATE INDEX IF NOT EXISTS idx_tickets_assignee ON tickets(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_parent ON tickets(parent_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_number ON tickets(ticket_number);
+CREATE INDEX IF NOT EXISTS idx_instructions_project ON instructions(project);
+CREATE INDEX IF NOT EXISTS idx_instructions_scope ON instructions(scope);
+CREATE INDEX IF NOT EXISTS idx_instructions_active ON instructions(active) WHERE active = 1;
+CREATE INDEX IF NOT EXISTS idx_instructions_project_branch ON instructions(project, branch);
+CREATE INDEX IF NOT EXISTS idx_attachments_entity ON attachments(entity_id, entity_type);
+CREATE INDEX IF NOT EXISTS idx_attachments_type ON attachments(type);
+CREATE INDEX IF NOT EXISTS idx_endpoints_project ON endpoints(project);
+CREATE INDEX IF NOT EXISTS idx_endpoints_branch ON endpoints(branch);
+CREATE INDEX IF NOT EXISTS idx_endpoints_project_branch ON endpoints(project, branch);
+CREATE INDEX IF NOT EXISTS idx_endpoints_status ON endpoints(status);
+CREATE INDEX IF NOT EXISTS idx_endpoints_method ON endpoints(method);
+CREATE INDEX IF NOT EXISTS idx_credentials_project ON credentials(project);
+CREATE INDEX IF NOT EXISTS idx_credentials_type ON credentials(type);
+CREATE INDEX IF NOT EXISTS idx_credentials_provider ON credentials(provider);
+CREATE INDEX IF NOT EXISTS idx_credentials_expires ON credentials(expires_at);
+CREATE INDEX IF NOT EXISTS idx_environments_project ON environments(project);
+CREATE INDEX IF NOT EXISTS idx_environments_type ON environments(type);
+CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project);
+CREATE INDEX IF NOT EXISTS idx_deployments_branch ON deployments(branch);
+CREATE INDEX IF NOT EXISTS idx_deployments_project_branch ON deployments(project, branch);
+CREATE INDEX IF NOT EXISTS idx_deployments_status ON deployments(status);
+CREATE INDEX IF NOT EXISTS idx_deployments_environment ON deployments(environment_id);
+CREATE INDEX IF NOT EXISTS idx_deployments_session ON deployments(session_id);
+CREATE INDEX IF NOT EXISTS idx_builds_project ON builds(project);
+CREATE INDEX IF NOT EXISTS idx_builds_branch ON builds(branch);
+CREATE INDEX IF NOT EXISTS idx_builds_project_branch ON builds(project, branch);
+CREATE INDEX IF NOT EXISTS idx_builds_status ON builds(status);
+CREATE INDEX IF NOT EXISTS idx_builds_session ON builds(session_id);
+CREATE INDEX IF NOT EXISTS idx_builds_commit ON builds(commit_sha);
+CREATE INDEX IF NOT EXISTS idx_incidents_project ON incidents(project);
+CREATE INDEX IF NOT EXISTS idx_incidents_severity ON incidents(severity);
+CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
+CREATE INDEX IF NOT EXISTS idx_incidents_lead ON incidents(lead_id);
+CREATE INDEX IF NOT EXISTS idx_dependencies_project ON dependencies(project);
+CREATE INDEX IF NOT EXISTS idx_dependencies_type ON dependencies(type);
+CREATE INDEX IF NOT EXISTS idx_dependencies_name ON dependencies(name);
+CREATE INDEX IF NOT EXISTS idx_runbooks_project ON runbooks(project);
+CREATE INDEX IF NOT EXISTS idx_decisions_project ON decisions(project);
+CREATE INDEX IF NOT EXISTS idx_decisions_branch ON decisions(branch);
+CREATE INDEX IF NOT EXISTS idx_decisions_project_branch ON decisions(project, branch);
+CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status);
+CREATE INDEX IF NOT EXISTS idx_decisions_session ON decisions(session_id);
+CREATE INDEX IF NOT EXISTS idx_decisions_author ON decisions(author_id);
+CREATE INDEX IF NOT EXISTS idx_decisions_superseded ON decisions(superseded_by);
+CREATE INDEX IF NOT EXISTS idx_diagrams_project ON diagrams(project);
+CREATE INDEX IF NOT EXISTS idx_diagrams_branch ON diagrams(branch);
+CREATE INDEX IF NOT EXISTS idx_diagrams_project_branch ON diagrams(project, branch);
+CREATE INDEX IF NOT EXISTS idx_diagrams_type ON diagrams(diagram_type);
+CREATE INDEX IF NOT EXISTS idx_diagrams_session ON diagrams(session_id);
+CREATE INDEX IF NOT EXISTS idx_comments_project ON comments(project);
+CREATE INDEX IF NOT EXISTS idx_comments_entity ON comments(entity_id, entity_type);
+CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id);
+CREATE INDEX IF NOT EXISTS idx_comments_author ON comments(author);
+CREATE INDEX IF NOT EXISTS idx_audit_log_project ON audit_log(project);
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_id, entity_type);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
 """
 
 
@@ -545,6 +1098,7 @@ class SQLiteBackend(DatabaseBackend):
         self._migrate_add_branch()  # must run before INDEXES (adds branch column)
         self._migrate_add_agent_attribution()  # adds agent_type/agent_model columns
         self._migrate_add_person_type()  # adds type column to people
+        self._migrate_add_instruction_priority()  # adds priority column to instructions
         self.conn.executescript(FTS_SCHEMA)
         self.conn.executescript(FTS_TRIGGERS)
         self._rebuild_fts()  # ensure FTS indexes are synced with existing data
@@ -608,6 +1162,11 @@ class SQLiteBackend(DatabaseBackend):
             "thoughts_fts", "rules_fts", "error_patterns_fts",
             "session_summaries_fts", "plans_fts",
             "specs_fts", "features_fts", "components_fts",
+            "tickets_fts", "instructions_fts",
+            "endpoints_fts", "credentials_fts", "environments_fts",
+            "deployments_fts", "builds_fts", "incidents_fts",
+            "dependencies_fts", "runbooks_fts", "decisions_fts",
+            "comments_fts",
         ]
         for fts in fts_tables:
             try:
@@ -621,6 +1180,15 @@ class SQLiteBackend(DatabaseBackend):
         assert self.conn is not None
         try:
             self.conn.execute("ALTER TABLE people ADD COLUMN type TEXT NOT NULL DEFAULT 'individual'")
+        except sqlite3.OperationalError:
+            pass  # column already exists or table doesn't exist yet
+        self.conn.commit()
+
+    def _migrate_add_instruction_priority(self) -> None:
+        """Add priority column to instructions table (idempotent)."""
+        assert self.conn is not None
+        try:
+            self.conn.execute("ALTER TABLE instructions ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium'")
         except sqlite3.OperationalError:
             pass  # column already exists or table doesn't exist yet
         self.conn.commit()
@@ -866,6 +1434,10 @@ class SQLiteBackend(DatabaseBackend):
             "thought_groups", "group_members", "embedding_meta",
             "plans", "plan_tasks",
             "specs", "features", "components", "people", "teams", "team_members",
+            "tickets", "instructions", "attachments",
+            "endpoints", "credentials", "environments", "deployments",
+            "builds", "incidents", "dependencies", "runbooks",
+            "decisions", "comments", "audit_log",
         ]
         counts: dict[str, Any] = {}
         for tbl in tables:

@@ -93,6 +93,21 @@ def _build_slug_maps(data: dict, project_names: set[str]) -> dict[str, dict[str,
         "components": _build_slug_map(data.get("components", []), lambda c: c.get("name")),
         "people": _build_slug_map(data.get("people", []), lambda p: p.get("name")),
         "teams": _build_slug_map(data.get("teams", []), lambda t: t.get("name")),
+        "tickets": _build_slug_map(data.get("tickets", []), lambda t: t.get("title")),
+        "instructions": _build_slug_map(data.get("instructions", []), lambda i: i.get("title")),
+        "attachments": _build_slug_map(data.get("attachments", []), lambda a: a.get("label")),
+        "endpoints": _build_slug_map(data.get("endpoints", []), lambda e: f'{e.get("method")} {e.get("path")}'),
+        "credentials": _build_slug_map(data.get("credentials", []), lambda c: c.get("name")),
+        "environments": _build_slug_map(data.get("environments", []), lambda e: e.get("name")),
+        "deployments": _build_slug_map(data.get("deployments", []), lambda d: d.get("version")),
+        "builds": _build_slug_map(data.get("builds", []), lambda b: b.get("name")),
+        "incidents": _build_slug_map(data.get("incidents", []), lambda i: i.get("title")),
+        "dependencies": _build_slug_map(data.get("dependencies", []), lambda d: d.get("name")),
+        "runbooks": _build_slug_map(data.get("runbooks", []), lambda r: r.get("title")),
+        "decisions": _build_slug_map(data.get("decisions", []), lambda d: d.get("title")),
+        "diagrams": _build_slug_map(data.get("diagrams", []), lambda d: d.get("title")),
+        "comments": _build_slug_map(data.get("comments", []), lambda c: c.get("content", "")[:40]),
+        "audit_log": _build_slug_map(data.get("audit_log", []), lambda a: f'{a.get("action")} {a.get("entity_type")}'),
         "projects": _build_slug_map(
             list(project_names),
             label_getter=lambda name: name,
@@ -246,6 +261,21 @@ def _fetch_all_data(db_path: Optional[str] = None, project: Optional[str] = None
             "teams": db.backend.fetchall(f"SELECT * FROM teams WHERE project={p} OR project IS NULL ORDER BY name", pp),
             "plan_tasks": db.backend.fetchall(
                 f"SELECT pt.* FROM plan_tasks pt JOIN plans pl ON pt.plan_id=pl.id WHERE pl.project={p} ORDER BY pt.position", pp),
+            "tickets": db.backend.fetchall(f"SELECT * FROM tickets WHERE project={p} ORDER BY updated_at DESC", pp),
+            "instructions": db.backend.fetchall(f"SELECT * FROM instructions WHERE project={p} ORDER BY position", pp),
+            "attachments": db.backend.fetchall("SELECT * FROM attachments ORDER BY position"),
+            "endpoints": db.backend.fetchall(f"SELECT * FROM endpoints WHERE project={p} ORDER BY path", pp),
+            "credentials": db.backend.fetchall(f"SELECT * FROM credentials WHERE project={p} ORDER BY name", pp),
+            "environments": db.backend.fetchall(f"SELECT * FROM environments WHERE project={p} ORDER BY name", pp),
+            "deployments": db.backend.fetchall(f"SELECT * FROM deployments WHERE project={p} ORDER BY created_at DESC", pp),
+            "builds": db.backend.fetchall(f"SELECT * FROM builds WHERE project={p} ORDER BY created_at DESC", pp),
+            "incidents": db.backend.fetchall(f"SELECT * FROM incidents WHERE project={p} ORDER BY created_at DESC", pp),
+            "dependencies": db.backend.fetchall(f"SELECT * FROM dependencies WHERE project={p} ORDER BY name", pp),
+            "runbooks": db.backend.fetchall(f"SELECT * FROM runbooks WHERE project={p} ORDER BY title", pp),
+            "decisions": db.backend.fetchall(f"SELECT * FROM decisions WHERE project={p} ORDER BY created_at DESC", pp),
+            "diagrams": db.backend.fetchall(f"SELECT * FROM diagrams WHERE project={p} ORDER BY updated_at DESC", pp),
+            "comments": db.backend.fetchall(f"SELECT * FROM comments WHERE project={p} ORDER BY created_at DESC", pp),
+            "audit_log": db.backend.fetchall(f"SELECT * FROM audit_log WHERE project={p} ORDER BY created_at DESC", pp),
         }
     else:
         data = {
@@ -265,6 +295,21 @@ def _fetch_all_data(db_path: Optional[str] = None, project: Optional[str] = None
             "people": db.backend.fetchall("SELECT * FROM people ORDER BY name"),
             "teams": db.backend.fetchall("SELECT * FROM teams ORDER BY name"),
             "plan_tasks": db.backend.fetchall("SELECT * FROM plan_tasks ORDER BY position"),
+            "tickets": db.backend.fetchall("SELECT * FROM tickets ORDER BY updated_at DESC"),
+            "instructions": db.backend.fetchall("SELECT * FROM instructions ORDER BY position"),
+            "attachments": db.backend.fetchall("SELECT * FROM attachments ORDER BY position"),
+            "endpoints": db.backend.fetchall("SELECT * FROM endpoints ORDER BY path"),
+            "credentials": db.backend.fetchall("SELECT * FROM credentials ORDER BY name"),
+            "environments": db.backend.fetchall("SELECT * FROM environments ORDER BY name"),
+            "deployments": db.backend.fetchall("SELECT * FROM deployments ORDER BY created_at DESC"),
+            "builds": db.backend.fetchall("SELECT * FROM builds ORDER BY created_at DESC"),
+            "incidents": db.backend.fetchall("SELECT * FROM incidents ORDER BY created_at DESC"),
+            "dependencies": db.backend.fetchall("SELECT * FROM dependencies ORDER BY name"),
+            "runbooks": db.backend.fetchall("SELECT * FROM runbooks ORDER BY title"),
+            "decisions": db.backend.fetchall("SELECT * FROM decisions ORDER BY created_at DESC"),
+            "diagrams": db.backend.fetchall("SELECT * FROM diagrams ORDER BY updated_at DESC"),
+            "comments": db.backend.fetchall("SELECT * FROM comments ORDER BY created_at DESC"),
+            "audit_log": db.backend.fetchall("SELECT * FROM audit_log ORDER BY created_at DESC"),
         }
     return db, data
 
@@ -292,7 +337,10 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
     db, data = _fetch_all_data(db_path, project=project)
 
     for sub in ("sessions", "thoughts", "rules", "errors", "groups", "projects",
-                "plans", "specs", "features", "components", "people", "teams"):
+                "plans", "specs", "features", "components", "people", "teams",
+                "tickets", "instructions", "attachments", "endpoints", "credentials",
+                "environments", "deployments", "builds", "incidents", "dependencies",
+                "runbooks", "decisions", "diagrams", "comments", "audit_log"):
         (out / sub).mkdir(parents=True, exist_ok=True)
 
     p = db.backend.ph
@@ -312,7 +360,22 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
     components = data.get("components", [])
     people = data.get("people", [])
     teams_data = data.get("teams", [])
-    all_projects = _collect_projects(thoughts, rules, sessions, project_sums, plans, specs, features, components, teams_data)
+    tickets = data.get("tickets", [])
+    instructions_data = data.get("instructions", [])
+    attachments = data.get("attachments", [])
+    endpoints = data.get("endpoints", [])
+    credentials = data.get("credentials", [])
+    environments = data.get("environments", [])
+    deployments = data.get("deployments", [])
+    builds_data = data.get("builds", [])
+    incidents = data.get("incidents", [])
+    dependencies = data.get("dependencies", [])
+    runbooks = data.get("runbooks", [])
+    decisions = data.get("decisions", [])
+    diagrams_data = data.get("diagrams", [])
+    comments = data.get("comments", [])
+    audit_log = data.get("audit_log", [])
+    all_projects = _collect_projects(thoughts, rules, sessions, project_sums, plans, specs, features, components, teams_data, tickets, instructions_data, endpoints, credentials, environments, deployments, builds_data, incidents, dependencies, runbooks, decisions, diagrams_data, comments)
     slug_maps = _build_slug_maps(data, all_projects)
     thought_slugs = slug_maps["thoughts"]
     rule_slugs = slug_maps["rules"]
@@ -326,6 +389,21 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
     component_slugs = slug_maps["components"]
     people_slugs = slug_maps["people"]
     team_slugs = slug_maps["teams"]
+    ticket_slugs = slug_maps["tickets"]
+    instruction_slugs = slug_maps["instructions"]
+    attachment_slugs = slug_maps["attachments"]
+    endpoint_slugs = slug_maps["endpoints"]
+    credential_slugs = slug_maps["credentials"]
+    environment_slugs = slug_maps["environments"]
+    deployment_slugs = slug_maps["deployments"]
+    build_slugs = slug_maps["builds"]
+    incident_slugs = slug_maps["incidents"]
+    dependency_slugs = slug_maps["dependencies"]
+    runbook_slugs = slug_maps["runbooks"]
+    decision_slugs = slug_maps["decisions"]
+    diagram_slugs = slug_maps["diagrams"]
+    comment_slugs = slug_maps["comments"]
+    audit_log_slugs = slug_maps["audit_log"]
 
     # Build task lookup by plan_id
     tasks_by_plan: dict[str, list] = {}
@@ -348,6 +426,18 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
     idx.append(f"| Components | {len(components)} |")
     idx.append(f"| People | {len(people)} |")
     idx.append(f"| Teams | {len(teams_data)} |")
+    idx.append(f"| Tickets | {len(tickets)} |")
+    idx.append(f"| Instructions | {len(instructions_data)} |")
+    idx.append(f"| Endpoints | {len(endpoints)} |")
+    idx.append(f"| Credentials | {len(credentials)} |")
+    idx.append(f"| Environments | {len(environments)} |")
+    idx.append(f"| Deployments | {len(deployments)} |")
+    idx.append(f"| Builds | {len(builds_data)} |")
+    idx.append(f"| Incidents | {len(incidents)} |")
+    idx.append(f"| Dependencies | {len(dependencies)} |")
+    idx.append(f"| Runbooks | {len(runbooks)} |")
+    idx.append(f"| Decisions | {len(decisions)} |")
+    idx.append(f"| Diagrams | {len(diagrams_data)} |")
     idx.append(f"| Links | {len(links)} |")
     idx.append(f"| Projects | {len(project_sums)} |")
     idx.append("")
@@ -417,10 +507,10 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
             lines.append("## Session Summary\n")
             if ss.get("outcome"):
                 lines.append(f"**Outcome:** {ss['outcome']}\n")
-            decisions = _json_list(ss.get("decisions_made"))
-            if decisions:
+            ss_decisions = _json_list(ss.get("decisions_made"))
+            if ss_decisions:
                 lines.append("**Decisions:**\n")
-                lines.append(_bullet_list(decisions))
+                lines.append(_bullet_list(ss_decisions))
             files = _json_list(ss.get("files_modified"))
             if files:
                 lines.append("**Files Modified:**\n")
@@ -836,6 +926,421 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
             lines.append("")
         (out / "teams" / f"{tm_slug}.md").write_text("\n".join(lines))
 
+    # ── Tickets ─────────────────────────────────────────────────────────
+
+    for tk in tickets:
+        tk_slug = ticket_slugs.get(tk["id"], tk["id"])
+        lines = [f"# Ticket: {tk['ticket_number']} — {tk['title']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{tk['id']}` |")
+        lines.append(f"| Number | {tk['ticket_number']} |")
+        lines.append(f"| Status | {tk['status']} |")
+        lines.append(f"| Priority | {tk['priority']} |")
+        lines.append(f"| Type | {tk['type']} |")
+        lines.append(f"| Project | {tk.get('project') or '-'} |")
+        if tk.get("assignee_id"):
+            a_slug = people_slugs.get(tk["assignee_id"], tk["assignee_id"])
+            lines.append(f"| Assignee | [{tk['assignee_id']}](../people/{a_slug}.md) |")
+        if tk.get("reporter_id"):
+            r_slug = people_slugs.get(tk["reporter_id"], tk["reporter_id"])
+            lines.append(f"| Reporter | [{tk['reporter_id']}](../people/{r_slug}.md) |")
+        if tk.get("due_date"):
+            lines.append(f"| Due | {tk['due_date']} |")
+        lines.append(f"| Created | {tk['created_at']} |")
+        tags = _json_list(tk.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if tk.get("description"):
+            lines.append(f"## Description\n\n{tk['description']}\n")
+        (out / "tickets" / f"{tk_slug}.md").write_text("\n".join(lines))
+
+    # ── Instructions ───────────────────────────────────────────────────
+
+    for ins in instructions_data:
+        ins_slug = instruction_slugs.get(ins["id"], ins["id"])
+        lines = [f"# Instruction: {ins['title']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{ins['id']}` |")
+        lines.append(f"| Section | {ins['section']} |")
+        lines.append(f"| Priority | {ins['priority']} |")
+        lines.append(f"| Scope | {ins['scope']} |")
+        lines.append(f"| Active | {'Yes' if ins.get('active') else 'No'} |")
+        lines.append(f"| Position | {ins['position']} |")
+        lines.append(f"| Project | {ins.get('project') or '-'} |")
+        lines.append(f"| Created | {ins['created_at']} |")
+        tags = _json_list(ins.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if ins.get("content"):
+            lines.append(f"## Content\n\n{ins['content']}\n")
+        (out / "instructions" / f"{ins_slug}.md").write_text("\n".join(lines))
+
+    # ── Attachments ────────────────────────────────────────────────────
+
+    for att in attachments:
+        att_slug = attachment_slugs.get(att["id"], att["id"])
+        lines = [f"# Attachment: {att.get('label') or att['id']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{att['id']}` |")
+        lines.append(f"| Entity | {att['entity_type']} `{att['entity_id']}` |")
+        lines.append(f"| URL | {att['url']} |")
+        lines.append(f"| Type | {att['type']} |")
+        if att.get("mime_type"):
+            lines.append(f"| MIME | {att['mime_type']} |")
+        lines.append(f"| Position | {att['position']} |")
+        lines.append(f"| Created | {att['created_at']} |")
+        lines.append("")
+        if att.get("description"):
+            lines.append(f"## Description\n\n{att['description']}\n")
+        (out / "attachments" / f"{att_slug}.md").write_text("\n".join(lines))
+
+    # ── Endpoints ──────────────────────────────────────────────────────
+
+    for ep in endpoints:
+        ep_slug = endpoint_slugs.get(ep["id"], ep["id"])
+        lines = [f"# {ep['method']} {ep['path']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{ep['id']}` |")
+        lines.append(f"| Method | {ep['method']} |")
+        lines.append(f"| Path | {ep['path']} |")
+        if ep.get("base_url"):
+            lines.append(f"| Base URL | {ep['base_url']} |")
+        lines.append(f"| Auth | {ep['auth_type']} |")
+        lines.append(f"| Status | {ep['status']} |")
+        lines.append(f"| Project | {ep.get('project') or '-'} |")
+        if ep.get("rate_limit"):
+            lines.append(f"| Rate Limit | {ep['rate_limit']} |")
+        lines.append(f"| Created | {ep['created_at']} |")
+        tags = _json_list(ep.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if ep.get("description"):
+            lines.append(f"## Description\n\n{ep['description']}\n")
+        (out / "endpoints" / f"{ep_slug}.md").write_text("\n".join(lines))
+
+    # ── Credentials ────────────────────────────────────────────────────
+
+    for cr in credentials:
+        cr_slug = credential_slugs.get(cr["id"], cr["id"])
+        lines = [f"# Credential: {cr['name']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{cr['id']}` |")
+        lines.append(f"| Type | {cr['type']} |")
+        lines.append(f"| Provider | {cr.get('provider') or '-'} |")
+        if cr.get("vault_path"):
+            lines.append(f"| Vault Path | {cr['vault_path']} |")
+        if cr.get("env_var"):
+            lines.append(f"| Env Var | {cr['env_var']} |")
+        lines.append(f"| Project | {cr.get('project') or '-'} |")
+        if cr.get("last_rotated"):
+            lines.append(f"| Last Rotated | {cr['last_rotated']} |")
+        if cr.get("expires_at"):
+            lines.append(f"| Expires | {cr['expires_at']} |")
+        lines.append(f"| Created | {cr['created_at']} |")
+        tags = _json_list(cr.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if cr.get("description"):
+            lines.append(f"## Description\n\n{cr['description']}\n")
+        (out / "credentials" / f"{cr_slug}.md").write_text("\n".join(lines))
+
+    # ── Environments ───────────────────────────────────────────────────
+
+    for env in environments:
+        env_slug = environment_slugs.get(env["id"], env["id"])
+        lines = [f"# Environment: {env['name']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{env['id']}` |")
+        lines.append(f"| Type | {env['type']} |")
+        if env.get("url"):
+            lines.append(f"| URL | {env['url']} |")
+        lines.append(f"| Project | {env.get('project') or '-'} |")
+        lines.append(f"| Created | {env['created_at']} |")
+        tags = _json_list(env.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if env.get("description"):
+            lines.append(f"## Description\n\n{env['description']}\n")
+        (out / "environments" / f"{env_slug}.md").write_text("\n".join(lines))
+
+    # ── Deployments ────────────────────────────────────────────────────
+
+    for dep in deployments:
+        dep_slug = deployment_slugs.get(dep["id"], dep["id"])
+        lines = [f"# Deployment: {dep['version']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{dep['id']}` |")
+        lines.append(f"| Version | {dep['version']} |")
+        lines.append(f"| Status | {dep['status']} |")
+        lines.append(f"| Strategy | {dep['strategy']} |")
+        lines.append(f"| Project | {dep.get('project') or '-'} |")
+        if dep.get("environment_id"):
+            env_s = environment_slugs.get(dep["environment_id"], dep["environment_id"])
+            lines.append(f"| Environment | [{dep['environment_id']}](../environments/{env_s}.md) |")
+        if dep.get("deployed_by"):
+            lines.append(f"| Deployed By | {dep['deployed_by']} |")
+        if dep.get("deployed_at"):
+            lines.append(f"| Deployed At | {dep['deployed_at']} |")
+        lines.append(f"| Created | {dep['created_at']} |")
+        tags = _json_list(dep.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if dep.get("description"):
+            lines.append(f"## Description\n\n{dep['description']}\n")
+        (out / "deployments" / f"{dep_slug}.md").write_text("\n".join(lines))
+
+    # ── Builds ─────────────────────────────────────────────────────────
+
+    for bd in builds_data:
+        bd_slug = build_slugs.get(bd["id"], bd["id"])
+        lines = [f"# Build: {bd['name']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{bd['id']}` |")
+        lines.append(f"| Pipeline | {bd.get('pipeline') or '-'} |")
+        lines.append(f"| Status | {bd['status']} |")
+        lines.append(f"| Trigger | {bd['trigger_type']} |")
+        if bd.get("commit_sha"):
+            lines.append(f"| Commit | `{bd['commit_sha']}` |")
+        if bd.get("branch"):
+            lines.append(f"| Branch | {bd['branch']} |")
+        lines.append(f"| Project | {bd.get('project') or '-'} |")
+        if bd.get("duration_seconds"):
+            lines.append(f"| Duration | {bd['duration_seconds']}s |")
+        if bd.get("artifact_url"):
+            lines.append(f"| Artifact | {bd['artifact_url']} |")
+        lines.append(f"| Created | {bd['created_at']} |")
+        tags = _json_list(bd.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        (out / "builds" / f"{bd_slug}.md").write_text("\n".join(lines))
+
+    # ── Incidents ──────────────────────────────────────────────────────
+
+    for inc in incidents:
+        inc_slug = incident_slugs.get(inc["id"], inc["id"])
+        lines = [f"# Incident: {inc['title']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{inc['id']}` |")
+        lines.append(f"| Severity | {inc['severity']} |")
+        lines.append(f"| Status | {inc['status']} |")
+        lines.append(f"| Project | {inc.get('project') or '-'} |")
+        if inc.get("lead_id"):
+            l_slug = people_slugs.get(inc["lead_id"], inc["lead_id"])
+            lines.append(f"| Lead | [{inc['lead_id']}](../people/{l_slug}.md) |")
+        if inc.get("started_at"):
+            lines.append(f"| Started | {inc['started_at']} |")
+        if inc.get("resolved_at"):
+            lines.append(f"| Resolved | {inc['resolved_at']} |")
+        lines.append(f"| Created | {inc['created_at']} |")
+        tags = _json_list(inc.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if inc.get("description"):
+            lines.append(f"## Description\n\n{inc['description']}\n")
+        if inc.get("root_cause"):
+            lines.append(f"## Root Cause\n\n{inc['root_cause']}\n")
+        if inc.get("resolution"):
+            lines.append(f"## Resolution\n\n{inc['resolution']}\n")
+        timeline = _json_list(inc.get("timeline"))
+        if timeline:
+            lines.append("## Timeline\n")
+            lines.append(_bullet_list(timeline))
+        (out / "incidents" / f"{inc_slug}.md").write_text("\n".join(lines))
+
+    # ── Dependencies ───────────────────────────────────────────────────
+
+    for dp in dependencies:
+        dp_slug = dependency_slugs.get(dp["id"], dp["id"])
+        lines = [f"# Dependency: {dp['name']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{dp['id']}` |")
+        lines.append(f"| Version | {dp.get('version') or '-'} |")
+        lines.append(f"| Type | {dp['type']} |")
+        if dp.get("source"):
+            lines.append(f"| Source | {dp['source']} |")
+        if dp.get("license"):
+            lines.append(f"| License | {dp['license']} |")
+        lines.append(f"| Project | {dp.get('project') or '-'} |")
+        if dp.get("pinned_version"):
+            lines.append(f"| Pinned | {dp['pinned_version']} |")
+        if dp.get("latest_version"):
+            lines.append(f"| Latest | {dp['latest_version']} |")
+        lines.append(f"| Created | {dp['created_at']} |")
+        tags = _json_list(dp.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if dp.get("description"):
+            lines.append(f"## Description\n\n{dp['description']}\n")
+        (out / "dependencies" / f"{dp_slug}.md").write_text("\n".join(lines))
+
+    # ── Runbooks ───────────────────────────────────────────────────────
+
+    for rb in runbooks:
+        rb_slug = runbook_slugs.get(rb["id"], rb["id"])
+        lines = [f"# Runbook: {rb['title']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{rb['id']}` |")
+        lines.append(f"| Project | {rb.get('project') or '-'} |")
+        if rb.get("trigger_conditions"):
+            lines.append(f"| Trigger | {rb['trigger_conditions']} |")
+        if rb.get("last_executed"):
+            lines.append(f"| Last Executed | {rb['last_executed']} |")
+        lines.append(f"| Created | {rb['created_at']} |")
+        tags = _json_list(rb.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if rb.get("description"):
+            lines.append(f"## Description\n\n{rb['description']}\n")
+        steps = _json_list(rb.get("steps"))
+        if steps:
+            lines.append("## Steps\n")
+            for i, step in enumerate(steps, 1):
+                lines.append(f"{i}. {step}")
+            lines.append("")
+        (out / "runbooks" / f"{rb_slug}.md").write_text("\n".join(lines))
+
+    # ── Decisions ──────────────────────────────────────────────────────
+
+    for dec in decisions:
+        dec_slug = decision_slugs.get(dec["id"], dec["id"])
+        lines = [f"# Decision: {dec['title']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{dec['id']}` |")
+        lines.append(f"| Status | {dec['status']} |")
+        lines.append(f"| Project | {dec.get('project') or '-'} |")
+        if dec.get("author_id"):
+            a_slug = people_slugs.get(dec["author_id"], dec["author_id"])
+            lines.append(f"| Author | [{dec['author_id']}](../people/{a_slug}.md) |")
+        if dec.get("decided_at"):
+            lines.append(f"| Decided | {dec['decided_at']} |")
+        if dec.get("superseded_by"):
+            lines.append(f"| Superseded By | {dec['superseded_by']} |")
+        lines.append(f"| Created | {dec['created_at']} |")
+        tags = _json_list(dec.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if dec.get("context"):
+            lines.append(f"## Context\n\n{dec['context']}\n")
+        options = _json_list(dec.get("options"))
+        if options:
+            lines.append("## Options\n")
+            lines.append(_bullet_list(options))
+        if dec.get("outcome"):
+            lines.append(f"## Outcome\n\n{dec['outcome']}\n")
+        if dec.get("consequences"):
+            lines.append(f"## Consequences\n\n{dec['consequences']}\n")
+        (out / "decisions" / f"{dec_slug}.md").write_text("\n".join(lines))
+
+    # ── Diagrams ──────────────────────────────────────────────────────
+
+    for diag in diagrams_data:
+        diag_slug = diagram_slugs.get(diag["id"], diag["id"])
+        lines = [f"# Diagram: {diag['title']}\n"]
+        lines.append("| Field | Value |")
+        lines.append("|-------|-------|")
+        lines.append(f"| ID | `{diag['id']}` |")
+        lines.append(f"| Type | {diag['diagram_type']} |")
+        lines.append(f"| Project | {diag.get('project') or '-'} |")
+        lines.append(f"| Created | {diag['created_at']} |")
+        tags = _json_list(diag.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if diag.get("description"):
+            lines.append(f"## Description\n\n{diag['description']}\n")
+        if diag.get("definition"):
+            dtype = diag["diagram_type"]
+            if dtype == "mermaid":
+                lines.append(f"## Diagram\n\n```mermaid\n{diag['definition']}\n```\n")
+            elif dtype == "table":
+                # Render as markdown table if possible
+                try:
+                    tdata = json.loads(diag["definition"])
+                    cols = tdata.get("columns", [])
+                    rows = tdata.get("rows", [])
+                    if cols and rows:
+                        lines.append("## Table\n")
+                        lines.append("| " + " | ".join(str(c) for c in cols) + " |")
+                        lines.append("| " + " | ".join("---" for _ in cols) + " |")
+                        for row in rows:
+                            cells = [str(row[c]) if isinstance(row, dict) else str(c) for c in (row if not isinstance(row, dict) else cols)]
+                            lines.append("| " + " | ".join(cells) + " |")
+                        lines.append("")
+                    else:
+                        lines.append(f"## Definition\n\n```json\n{diag['definition']}\n```\n")
+                except (ValueError, TypeError):
+                    lines.append(f"## Definition\n\n```json\n{diag['definition']}\n```\n")
+            else:
+                # chart, network, servicemap — JSON config
+                lines.append(f"## Definition\n\n<!-- {dtype} config -->\n```json\n{diag['definition']}\n```\n")
+        (out / "diagrams" / f"{diag_slug}.md").write_text("\n".join(lines))
+
+    # ── Comments ───────────────────────────────────────────────────────
+
+    for cm in comments:
+        cm_slug = comment_slugs.get(cm["id"], cm["id"])
+        lines = [f"# Comment by {cm.get('author') or 'Unknown'}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{cm['id']}` |")
+        lines.append(f"| Entity | {cm['entity_type']} `{cm['entity_id']}` |")
+        lines.append(f"| Author | {cm.get('author') or '-'} |")
+        lines.append(f"| Project | {cm.get('project') or '-'} |")
+        lines.append(f"| Created | {cm['created_at']} |")
+        tags = _json_list(cm.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if cm.get("content"):
+            lines.append(f"## Content\n\n{cm['content']}\n")
+        (out / "comments" / f"{cm_slug}.md").write_text("\n".join(lines))
+
+    # ── Audit Log ──────────────────────────────────────────────────────
+
+    for al in audit_log:
+        al_slug = audit_log_slugs.get(al["id"], al["id"])
+        lines = [f"# Audit: {al['action']} {al['entity_type']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{al['id']}` |")
+        lines.append(f"| Entity | {al['entity_type']} `{al['entity_id']}` |")
+        lines.append(f"| Action | {al['action']} |")
+        if al.get("field_changed"):
+            lines.append(f"| Field Changed | {al['field_changed']} |")
+        if al.get("old_value"):
+            lines.append(f"| Old Value | {al['old_value']} |")
+        if al.get("new_value"):
+            lines.append(f"| New Value | {al['new_value']} |")
+        if al.get("actor"):
+            lines.append(f"| Actor | {al['actor']} |")
+        lines.append(f"| Project | {al.get('project') or '-'} |")
+        lines.append(f"| Created | {al['created_at']} |")
+        lines.append("")
+        (out / "audit_log" / f"{al_slug}.md").write_text("\n".join(lines))
+
     # ── Projects ────────────────────────────────────────────────────────
 
     ps_by_name = {ps["project"]: ps for ps in project_sums}
@@ -949,13 +1454,61 @@ def export_markdown(db_path: Optional[str] = None, output_dir: str = "memgram-ex
                 lines.append(f"- [{t['name']}](../teams/{t_slug}.md)")
             lines.append("")
 
+        # Project tickets
+        proj_tickets = [tk for tk in tickets if tk.get("project") == proj]
+        if proj_tickets:
+            lines.append("## Tickets\n")
+            for tk in proj_tickets:
+                tk_slug = ticket_slugs.get(tk["id"], tk["id"])
+                lines.append(f"- [{tk['ticket_number']}: {tk['title']}](../tickets/{tk_slug}.md) — {tk['status']}")
+            lines.append("")
+
+        # Project incidents
+        proj_incidents = [inc for inc in incidents if inc.get("project") == proj]
+        if proj_incidents:
+            lines.append("## Incidents\n")
+            for inc in proj_incidents:
+                inc_slug = incident_slugs.get(inc["id"], inc["id"])
+                lines.append(f"- [{inc['title']}](../incidents/{inc_slug}.md) — {inc['severity']} / {inc['status']}")
+            lines.append("")
+
+        # Project decisions
+        proj_decisions = [dec for dec in decisions if dec.get("project") == proj]
+        if proj_decisions:
+            lines.append("## Decisions\n")
+            for dec in proj_decisions:
+                dec_slug = decision_slugs.get(dec["id"], dec["id"])
+                lines.append(f"- [{dec['title']}](../decisions/{dec_slug}.md) — {dec['status']}")
+            lines.append("")
+
+        # Project deployments
+        proj_deployments = [dep for dep in deployments if dep.get("project") == proj]
+        if proj_deployments:
+            lines.append("## Deployments\n")
+            for dep in proj_deployments:
+                dep_slug = deployment_slugs.get(dep["id"], dep["id"])
+                lines.append(f"- [{dep['version']}](../deployments/{dep_slug}.md) — {dep['status']}")
+            lines.append("")
+
+        # Project dependencies
+        proj_deps = [dp for dp in dependencies if dp.get("project") == proj]
+        if proj_deps:
+            lines.append("## Dependencies\n")
+            for dp in proj_deps:
+                dp_slug = dependency_slugs.get(dp["id"], dp["id"])
+                lines.append(f"- [{dp['name']}](../dependencies/{dp_slug}.md) v{dp.get('version') or '?'}")
+            lines.append("")
+
         (out / "projects" / f"{proj_slug}.md").write_text("\n".join(lines))
 
     db.close()
 
     total = (len(sessions) + len(thoughts) + len(rules) + len(errors) + len(groups)
              + len(plans) + len(specs) + len(features) + len(components) + len(people)
-             + len(teams_data) + len(all_projects) + 1)
+             + len(teams_data) + len(tickets) + len(instructions_data) + len(attachments)
+             + len(endpoints) + len(credentials) + len(environments) + len(deployments)
+             + len(builds_data) + len(incidents) + len(dependencies) + len(runbooks)
+             + len(decisions) + len(comments) + len(audit_log) + len(all_projects) + 1)
     return out, total
 
 
@@ -1030,7 +1583,10 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
     db, data = _fetch_all_data(db_path, project=project)
 
     for sub in ("sessions", "thoughts", "rules", "errors", "groups", "projects",
-                "plans", "specs", "features", "components", "people", "teams"):
+                "plans", "specs", "features", "components", "people", "teams",
+                "tickets", "instructions", "attachments", "endpoints", "credentials",
+                "environments", "deployments", "builds", "incidents", "dependencies",
+                "runbooks", "decisions", "diagrams", "comments", "audit_log"):
         (out / sub).mkdir(parents=True, exist_ok=True)
 
     p = db.backend.ph
@@ -1050,7 +1606,22 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
     components = data.get("components", [])
     people = data.get("people", [])
     teams_data = data.get("teams", [])
-    all_projects = _collect_projects(thoughts, rules, sessions, project_sums, plans, specs, features, components, teams_data)
+    tickets = data.get("tickets", [])
+    instructions_data = data.get("instructions", [])
+    attachments = data.get("attachments", [])
+    endpoints = data.get("endpoints", [])
+    credentials = data.get("credentials", [])
+    environments = data.get("environments", [])
+    deployments = data.get("deployments", [])
+    builds_data = data.get("builds", [])
+    incidents = data.get("incidents", [])
+    dependencies = data.get("dependencies", [])
+    runbooks = data.get("runbooks", [])
+    decisions = data.get("decisions", [])
+    diagrams_data = data.get("diagrams", [])
+    comments = data.get("comments", [])
+    audit_log = data.get("audit_log", [])
+    all_projects = _collect_projects(thoughts, rules, sessions, project_sums, plans, specs, features, components, teams_data, tickets, instructions_data, endpoints, credentials, environments, deployments, builds_data, incidents, dependencies, runbooks, decisions, diagrams_data, comments)
     slug_maps = _build_slug_maps(data, all_projects)
     thought_slugs = slug_maps["thoughts"]
     rule_slugs = slug_maps["rules"]
@@ -1064,6 +1635,21 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
     component_slugs = slug_maps["components"]
     people_slugs = slug_maps["people"]
     team_slugs = slug_maps["teams"]
+    ticket_slugs = slug_maps["tickets"]
+    instruction_slugs = slug_maps["instructions"]
+    attachment_slugs = slug_maps["attachments"]
+    endpoint_slugs = slug_maps["endpoints"]
+    credential_slugs = slug_maps["credentials"]
+    environment_slugs = slug_maps["environments"]
+    deployment_slugs = slug_maps["deployments"]
+    build_slugs = slug_maps["builds"]
+    incident_slugs = slug_maps["incidents"]
+    dependency_slugs = slug_maps["dependencies"]
+    runbook_slugs = slug_maps["runbooks"]
+    decision_slugs = slug_maps["decisions"]
+    diagram_slugs = slug_maps["diagrams"]
+    comment_slugs = slug_maps["comments"]
+    audit_log_slugs = slug_maps["audit_log"]
 
     tasks_by_plan: dict[str, list] = {}
     for t in plan_tasks:
@@ -1133,6 +1719,20 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
         "people": ("People", 11),
         "teams": ("Teams", 12),
         "projects": ("Projects", 13),
+        "tickets": ("Tickets", 14),
+        "endpoints": ("Endpoints", 15),
+        "credentials": ("Credentials", 16),
+        "environments": ("Environments", 17),
+        "deployments": ("Deployments", 18),
+        "builds": ("Builds", 19),
+        "incidents": ("Incidents", 20),
+        "dependencies": ("Dependencies", 21),
+        "runbooks": ("Runbooks", 22),
+        "decisions": ("Decisions", 23),
+        "instructions": ("Instructions", 24),
+        "attachments": ("Attachments", 25),
+        "comments": ("Comments", 26),
+        "audit_log": ("Audit Log", 27),
     }
 
     for section, (title, nav_order) in section_nav.items():
@@ -1178,10 +1778,10 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
             lines.append("## Session Summary\n")
             if ss.get("outcome"):
                 lines.append(f"**Outcome:** {ss['outcome']}\n")
-            decisions = _json_list(ss.get("decisions_made"))
-            if decisions:
+            ss_decisions = _json_list(ss.get("decisions_made"))
+            if ss_decisions:
                 lines.append("**Decisions:**\n")
-                lines.append(_bullet_list(decisions))
+                lines.append(_bullet_list(ss_decisions))
             files = _json_list(ss.get("files_modified"))
             if files:
                 lines.append("**Files Modified:**\n")
@@ -1396,6 +1996,337 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
 
         (out / "groups" / f"{g_slug}.md").write_text("\n".join(lines))
 
+    # ── Tickets ────────────────────────────────────────────────────────
+
+    for i, tk in enumerate(tickets):
+        tk_slug = ticket_slugs.get(tk["id"], tk["id"])
+        fm = _front_matter(
+            layout="default", title=f'{tk["ticket_number"]}: {tk["title"]}',
+            parent="Tickets", nav_order=i + 1,
+        )
+        lines = [fm, f"# Ticket: {tk['ticket_number']} — {tk['title']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{tk['id']}` |")
+        lines.append(f"| Number | {tk['ticket_number']} |")
+        lines.append(f"| Status | {tk['status']} |")
+        lines.append(f"| Priority | {tk['priority']} |")
+        lines.append(f"| Type | {tk['type']} |")
+        lines.append(f"| Project | {tk.get('project') or '-'} |")
+        lines.append(f"| Created | {tk['created_at']} |")
+        tags = _json_list(tk.get("tags"))
+        if tags:
+            lines.append(f"| Tags | {', '.join(tags)} |")
+        lines.append("")
+        if tk.get("description"):
+            lines.append(f"## Description\n\n{tk['description']}\n")
+        (out / "tickets" / f"{tk_slug}.md").write_text("\n".join(lines))
+
+    # ── Endpoints ──────────────────────────────────────────────────────
+
+    for i, ep in enumerate(endpoints):
+        ep_slug = endpoint_slugs.get(ep["id"], ep["id"])
+        fm = _front_matter(
+            layout="default", title=f'{ep["method"]} {ep["path"]}',
+            parent="Endpoints", nav_order=i + 1,
+        )
+        lines = [fm, f"# {ep['method']} {ep['path']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{ep['id']}` |")
+        lines.append(f"| Auth | {ep['auth_type']} |")
+        lines.append(f"| Status | {ep['status']} |")
+        lines.append(f"| Project | {ep.get('project') or '-'} |")
+        lines.append(f"| Created | {ep['created_at']} |")
+        lines.append("")
+        if ep.get("description"):
+            lines.append(f"## Description\n\n{ep['description']}\n")
+        (out / "endpoints" / f"{ep_slug}.md").write_text("\n".join(lines))
+
+    # ── Credentials ────────────────────────────────────────────────────
+
+    for i, cr in enumerate(credentials):
+        cr_slug = credential_slugs.get(cr["id"], cr["id"])
+        fm = _front_matter(
+            layout="default", title=f'Credential: {cr["name"]}',
+            parent="Credentials", nav_order=i + 1,
+        )
+        lines = [fm, f"# Credential: {cr['name']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{cr['id']}` |")
+        lines.append(f"| Type | {cr['type']} |")
+        lines.append(f"| Provider | {cr.get('provider') or '-'} |")
+        lines.append(f"| Project | {cr.get('project') or '-'} |")
+        lines.append(f"| Created | {cr['created_at']} |")
+        lines.append("")
+        if cr.get("description"):
+            lines.append(f"## Description\n\n{cr['description']}\n")
+        (out / "credentials" / f"{cr_slug}.md").write_text("\n".join(lines))
+
+    # ── Environments ───────────────────────────────────────────────────
+
+    for i, env in enumerate(environments):
+        env_slug = environment_slugs.get(env["id"], env["id"])
+        fm = _front_matter(
+            layout="default", title=f'Environment: {env["name"]}',
+            parent="Environments", nav_order=i + 1,
+        )
+        lines = [fm, f"# Environment: {env['name']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{env['id']}` |")
+        lines.append(f"| Type | {env['type']} |")
+        lines.append(f"| Project | {env.get('project') or '-'} |")
+        lines.append(f"| Created | {env['created_at']} |")
+        lines.append("")
+        if env.get("description"):
+            lines.append(f"## Description\n\n{env['description']}\n")
+        (out / "environments" / f"{env_slug}.md").write_text("\n".join(lines))
+
+    # ── Deployments ────────────────────────────────────────────────────
+
+    for i, dep in enumerate(deployments):
+        dep_slug = deployment_slugs.get(dep["id"], dep["id"])
+        fm = _front_matter(
+            layout="default", title=f'Deployment: {dep["version"]}',
+            parent="Deployments", nav_order=i + 1,
+        )
+        lines = [fm, f"# Deployment: {dep['version']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{dep['id']}` |")
+        lines.append(f"| Status | {dep['status']} |")
+        lines.append(f"| Strategy | {dep['strategy']} |")
+        lines.append(f"| Project | {dep.get('project') or '-'} |")
+        lines.append(f"| Created | {dep['created_at']} |")
+        lines.append("")
+        if dep.get("description"):
+            lines.append(f"## Description\n\n{dep['description']}\n")
+        (out / "deployments" / f"{dep_slug}.md").write_text("\n".join(lines))
+
+    # ── Builds ─────────────────────────────────────────────────────────
+
+    for i, bd in enumerate(builds_data):
+        bd_slug = build_slugs.get(bd["id"], bd["id"])
+        fm = _front_matter(
+            layout="default", title=f'Build: {bd["name"]}',
+            parent="Builds", nav_order=i + 1,
+        )
+        lines = [fm, f"# Build: {bd['name']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{bd['id']}` |")
+        lines.append(f"| Pipeline | {bd.get('pipeline') or '-'} |")
+        lines.append(f"| Status | {bd['status']} |")
+        lines.append(f"| Trigger | {bd['trigger_type']} |")
+        lines.append(f"| Project | {bd.get('project') or '-'} |")
+        lines.append(f"| Created | {bd['created_at']} |")
+        lines.append("")
+        (out / "builds" / f"{bd_slug}.md").write_text("\n".join(lines))
+
+    # ── Incidents ──────────────────────────────────────────────────────
+
+    for i, inc in enumerate(incidents):
+        inc_slug = incident_slugs.get(inc["id"], inc["id"])
+        fm = _front_matter(
+            layout="default", title=f'Incident: {inc["title"]}',
+            parent="Incidents", nav_order=i + 1,
+        )
+        lines = [fm, f"# Incident: {inc['title']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{inc['id']}` |")
+        lines.append(f"| Severity | {inc['severity']} |")
+        lines.append(f"| Status | {inc['status']} |")
+        lines.append(f"| Project | {inc.get('project') or '-'} |")
+        lines.append(f"| Created | {inc['created_at']} |")
+        lines.append("")
+        if inc.get("description"):
+            lines.append(f"## Description\n\n{inc['description']}\n")
+        if inc.get("root_cause"):
+            lines.append(f"## Root Cause\n\n{inc['root_cause']}\n")
+        if inc.get("resolution"):
+            lines.append(f"## Resolution\n\n{inc['resolution']}\n")
+        (out / "incidents" / f"{inc_slug}.md").write_text("\n".join(lines))
+
+    # ── Dependencies ───────────────────────────────────────────────────
+
+    for i, dp in enumerate(dependencies):
+        dp_slug = dependency_slugs.get(dp["id"], dp["id"])
+        fm = _front_matter(
+            layout="default", title=f'Dependency: {dp["name"]}',
+            parent="Dependencies", nav_order=i + 1,
+        )
+        lines = [fm, f"# Dependency: {dp['name']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{dp['id']}` |")
+        lines.append(f"| Version | {dp.get('version') or '-'} |")
+        lines.append(f"| Type | {dp['type']} |")
+        lines.append(f"| Project | {dp.get('project') or '-'} |")
+        lines.append(f"| Created | {dp['created_at']} |")
+        lines.append("")
+        if dp.get("description"):
+            lines.append(f"## Description\n\n{dp['description']}\n")
+        (out / "dependencies" / f"{dp_slug}.md").write_text("\n".join(lines))
+
+    # ── Runbooks ───────────────────────────────────────────────────────
+
+    for i, rb in enumerate(runbooks):
+        rb_slug = runbook_slugs.get(rb["id"], rb["id"])
+        fm = _front_matter(
+            layout="default", title=f'Runbook: {rb["title"]}',
+            parent="Runbooks", nav_order=i + 1,
+        )
+        lines = [fm, f"# Runbook: {rb['title']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{rb['id']}` |")
+        lines.append(f"| Project | {rb.get('project') or '-'} |")
+        lines.append(f"| Created | {rb['created_at']} |")
+        lines.append("")
+        if rb.get("description"):
+            lines.append(f"## Description\n\n{rb['description']}\n")
+        steps = _json_list(rb.get("steps"))
+        if steps:
+            lines.append("## Steps\n")
+            for j, step in enumerate(steps, 1):
+                lines.append(f"{j}. {step}")
+            lines.append("")
+        (out / "runbooks" / f"{rb_slug}.md").write_text("\n".join(lines))
+
+    # ── Decisions ──────────────────────────────────────────────────────
+
+    for i, dec in enumerate(decisions):
+        dec_slug = decision_slugs.get(dec["id"], dec["id"])
+        fm = _front_matter(
+            layout="default", title=f'Decision: {dec["title"]}',
+            parent="Decisions", nav_order=i + 1,
+        )
+        lines = [fm, f"# Decision: {dec['title']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{dec['id']}` |")
+        lines.append(f"| Status | {dec['status']} |")
+        lines.append(f"| Project | {dec.get('project') or '-'} |")
+        lines.append(f"| Created | {dec['created_at']} |")
+        lines.append("")
+        if dec.get("context"):
+            lines.append(f"## Context\n\n{dec['context']}\n")
+        if dec.get("outcome"):
+            lines.append(f"## Outcome\n\n{dec['outcome']}\n")
+        (out / "decisions" / f"{dec_slug}.md").write_text("\n".join(lines))
+
+    # ── Diagrams ──────────────────────────────────────────────────────
+
+    for i, diag in enumerate(diagrams_data):
+        diag_slug = diagram_slugs.get(diag["id"], diag["id"])
+        fm = _front_matter(
+            layout="default", title=f'Diagram: {diag["title"]}',
+            parent="Diagrams", nav_order=i + 1,
+        )
+        lines = [fm, f"# Diagram: {diag['title']}\n"]
+        lines.append("| Field | Value |")
+        lines.append("|-------|-------|")
+        lines.append(f"| ID | `{diag['id']}` |")
+        lines.append(f"| Type | {diag['diagram_type']} |")
+        lines.append(f"| Project | {diag.get('project') or '-'} |")
+        lines.append(f"| Created | {diag['created_at']} |")
+        lines.append("")
+        if diag.get("description"):
+            lines.append(f"## Description\n\n{diag['description']}\n")
+        if diag.get("definition"):
+            dtype = diag["diagram_type"]
+            if dtype == "mermaid":
+                lines.append(f"## Diagram\n\n```mermaid\n{diag['definition']}\n```\n")
+            else:
+                lines.append(f"## Definition\n\n```json\n{diag['definition']}\n```\n")
+        (out / "diagrams" / f"{diag_slug}.md").write_text("\n".join(lines))
+
+    # ── Instructions ───────────────────────────────────────────────────
+
+    for i, ins in enumerate(instructions_data):
+        ins_slug = instruction_slugs.get(ins["id"], ins["id"])
+        fm = _front_matter(
+            layout="default", title=f'Instruction: {ins["title"]}',
+            parent="Instructions", nav_order=i + 1,
+        )
+        lines = [fm, f"# Instruction: {ins['title']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{ins['id']}` |")
+        lines.append(f"| Section | {ins['section']} |")
+        lines.append(f"| Priority | {ins['priority']} |")
+        lines.append(f"| Scope | {ins['scope']} |")
+        lines.append(f"| Active | {'Yes' if ins.get('active') else 'No'} |")
+        lines.append(f"| Created | {ins['created_at']} |")
+        lines.append("")
+        if ins.get("content"):
+            lines.append(f"## Content\n\n{ins['content']}\n")
+        (out / "instructions" / f"{ins_slug}.md").write_text("\n".join(lines))
+
+    # ── Attachments ────────────────────────────────────────────────────
+
+    for i, att in enumerate(attachments):
+        att_slug = attachment_slugs.get(att["id"], att["id"])
+        fm = _front_matter(
+            layout="default", title=f'Attachment: {att.get("label") or att["id"]}',
+            parent="Attachments", nav_order=i + 1,
+        )
+        lines = [fm, f"# Attachment: {att.get('label') or att['id']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{att['id']}` |")
+        lines.append(f"| Entity | {att['entity_type']} `{att['entity_id']}` |")
+        lines.append(f"| URL | {att['url']} |")
+        lines.append(f"| Type | {att['type']} |")
+        lines.append(f"| Created | {att['created_at']} |")
+        lines.append("")
+        if att.get("description"):
+            lines.append(f"## Description\n\n{att['description']}\n")
+        (out / "attachments" / f"{att_slug}.md").write_text("\n".join(lines))
+
+    # ── Comments ───────────────────────────────────────────────────────
+
+    for i, cm in enumerate(comments):
+        cm_slug = comment_slugs.get(cm["id"], cm["id"])
+        fm = _front_matter(
+            layout="default", title=f'Comment by {cm.get("author") or "Unknown"}',
+            parent="Comments", nav_order=i + 1,
+        )
+        lines = [fm, f"# Comment by {cm.get('author') or 'Unknown'}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{cm['id']}` |")
+        lines.append(f"| Entity | {cm['entity_type']} `{cm['entity_id']}` |")
+        lines.append(f"| Author | {cm.get('author') or '-'} |")
+        lines.append(f"| Created | {cm['created_at']} |")
+        lines.append("")
+        if cm.get("content"):
+            lines.append(f"## Content\n\n{cm['content']}\n")
+        (out / "comments" / f"{cm_slug}.md").write_text("\n".join(lines))
+
+    # ── Audit Log ──────────────────────────────────────────────────────
+
+    for i, al in enumerate(audit_log):
+        al_slug = audit_log_slugs.get(al["id"], al["id"])
+        fm = _front_matter(
+            layout="default", title=f'{al["action"]} {al["entity_type"]}',
+            parent="Audit Log", nav_order=i + 1,
+        )
+        lines = [fm, f"# Audit: {al['action']} {al['entity_type']}\n"]
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| ID | `{al['id']}` |")
+        lines.append(f"| Entity | {al['entity_type']} `{al['entity_id']}` |")
+        lines.append(f"| Action | {al['action']} |")
+        if al.get("actor"):
+            lines.append(f"| Actor | {al['actor']} |")
+        lines.append(f"| Created | {al['created_at']} |")
+        lines.append("")
+        (out / "audit_log" / f"{al_slug}.md").write_text("\n".join(lines))
+
     # ── Projects ───────────────────────────────────────────────────────
 
     ps_by_name = {ps["project"]: ps for ps in project_sums}
@@ -1510,7 +2441,10 @@ def export_jekyll(db_path: Optional[str] = None, output_dir: str = "memgram-jeky
 
     total = (len(sessions) + len(thoughts) + len(rules) + len(errors) + len(groups)
              + len(plans) + len(specs) + len(features) + len(components) + len(people)
-             + len(teams_data) + len(all_projects) + 1)
+             + len(teams_data) + len(tickets) + len(instructions_data) + len(attachments)
+             + len(endpoints) + len(credentials) + len(environments) + len(deployments)
+             + len(builds_data) + len(incidents) + len(dependencies) + len(runbooks)
+             + len(decisions) + len(comments) + len(audit_log) + len(all_projects) + 1)
     return out, total
 
 
@@ -1803,6 +2737,32 @@ tr:hover td { background: rgba(88,166,255,0.04); }
   .sidebar-toggle { display: block; }
   .main { margin-left: 0; padding: 24px 16px 60px; }
 }
+/* Diagrams */
+.diagram-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin: 16px 0;
+  min-height: 200px;
+  overflow: auto;
+}
+.diagram-container canvas { max-width: 100%; }
+.diagram-container svg { max-width: 100%; height: auto; }
+pre.mermaid {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin: 16px 0;
+}
+.diagram-source { margin-top: 12px; }
+.diagram-source summary { cursor: pointer; color: var(--text-muted); font-size: 0.9em; }
+.diagram-source pre { margin-top: 8px; }
+#network-graph svg { width: 100%; min-height: 400px; }
+#network-graph .node circle { stroke: var(--border); stroke-width: 1.5px; }
+#network-graph .node text { fill: var(--text); font-size: 11px; }
+#network-graph .link { stroke: var(--border); stroke-opacity: 0.6; }
 """
 
 _HTML_SEARCH_JS = """\
@@ -1882,6 +2842,8 @@ def _html_page(
     sidebar_counts: dict,
     active_section: str = "",
     depth: int = 0,
+    extra_head: str = "",
+    extra_body_end: str = "",
 ) -> str:
     """Generate a complete HTML page with sidebar, breadcrumbs, and content."""
     base = "/".join([".."] * depth) if depth > 0 else "."
@@ -1901,6 +2863,18 @@ def _html_page(
         ("Teams", "teams/index.html", "teams"),
         ("Projects", "projects/index.html", "projects"),
         ("Agents", "agents/index.html", "agents"),
+        ("Tickets", "tickets/index.html", "tickets"),
+        ("Endpoints", "endpoints/index.html", "endpoints"),
+        ("Credentials", "credentials/index.html", "credentials"),
+        ("Environments", "environments/index.html", "environments"),
+        ("Deployments", "deployments/index.html", "deployments"),
+        ("Builds", "builds/index.html", "builds"),
+        ("Incidents", "incidents/index.html", "incidents"),
+        ("Dependencies", "dependencies/index.html", "dependencies"),
+        ("Runbooks", "runbooks/index.html", "runbooks"),
+        ("Decisions", "decisions/index.html", "decisions"),
+        ("Diagrams", "diagrams/index.html", "diagrams"),
+        ("Instructions", "instructions/index.html", "instructions"),
     ]
 
     sidebar_html = []
@@ -1934,7 +2908,7 @@ def _html_page(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_esc(title)} - Memgram</title>
 <link rel="stylesheet" href="{base}/style.css">
-</head>
+{extra_head}</head>
 <body>
 <button class="sidebar-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">&#9776;</button>
 {"".join(sidebar_html)}
@@ -1943,7 +2917,7 @@ def _html_page(
 {content}
 </div>
 <script src="{base}/search.js"></script>
-</body>
+{extra_body_end}</body>
 </html>
 """
 
@@ -1984,7 +2958,10 @@ def export_html(
     db, data = _fetch_all_data(db_path, project=project)
 
     for sub in ("sessions", "thoughts", "rules", "errors", "groups", "projects", "agents",
-                "plans", "specs", "features", "components", "people", "teams"):
+                "plans", "specs", "features", "components", "people", "teams",
+                "tickets", "instructions", "attachments", "endpoints", "credentials",
+                "environments", "deployments", "builds", "incidents", "dependencies",
+                "runbooks", "decisions", "diagrams", "comments", "audit_log"):
         (out / sub).mkdir(parents=True, exist_ok=True)
 
     p = db.backend.ph
@@ -2004,7 +2981,22 @@ def export_html(
     components = data.get("components", [])
     people = data.get("people", [])
     teams_data = data.get("teams", [])
-    all_projects = _collect_projects(thoughts, rules, sessions, project_sums, plans, specs, features, components, teams_data)
+    tickets = data.get("tickets", [])
+    instructions_data = data.get("instructions", [])
+    attachments = data.get("attachments", [])
+    endpoints = data.get("endpoints", [])
+    credentials = data.get("credentials", [])
+    environments = data.get("environments", [])
+    deployments = data.get("deployments", [])
+    builds_data = data.get("builds", [])
+    incidents = data.get("incidents", [])
+    dependencies = data.get("dependencies", [])
+    runbooks = data.get("runbooks", [])
+    decisions = data.get("decisions", [])
+    diagrams_data = data.get("diagrams", [])
+    comments = data.get("comments", [])
+    audit_log = data.get("audit_log", [])
+    all_projects = _collect_projects(thoughts, rules, sessions, project_sums, plans, specs, features, components, teams_data, tickets, instructions_data, endpoints, credentials, environments, deployments, builds_data, incidents, dependencies, runbooks, decisions, diagrams_data, comments)
     slug_maps = _build_slug_maps(data, all_projects)
     thought_slugs = slug_maps["thoughts"]
     rule_slugs = slug_maps["rules"]
@@ -2018,6 +3010,21 @@ def export_html(
     component_slugs = slug_maps["components"]
     people_slugs = slug_maps["people"]
     team_slugs = slug_maps["teams"]
+    ticket_slugs = slug_maps["tickets"]
+    instruction_slugs = slug_maps["instructions"]
+    attachment_slugs = slug_maps["attachments"]
+    endpoint_slugs = slug_maps["endpoints"]
+    credential_slugs = slug_maps["credentials"]
+    environment_slugs = slug_maps["environments"]
+    deployment_slugs = slug_maps["deployments"]
+    build_slugs = slug_maps["builds"]
+    incident_slugs = slug_maps["incidents"]
+    dependency_slugs = slug_maps["dependencies"]
+    runbook_slugs = slug_maps["runbooks"]
+    decision_slugs = slug_maps["decisions"]
+    diagram_slugs = slug_maps["diagrams"]
+    comment_slugs = slug_maps["comments"]
+    audit_log_slugs = slug_maps["audit_log"]
 
     tasks_by_plan: dict[str, list] = {}
     for t in plan_tasks:
@@ -2054,6 +3061,21 @@ def export_html(
         "teams": len(teams_data),
         "projects": len(all_projects),
         "agents": len(agent_set),
+        "tickets": len(tickets),
+        "instructions": len(instructions_data),
+        "attachments": len(attachments),
+        "endpoints": len(endpoints),
+        "credentials": len(credentials),
+        "environments": len(environments),
+        "deployments": len(deployments),
+        "builds": len(builds_data),
+        "incidents": len(incidents),
+        "dependencies": len(dependencies),
+        "runbooks": len(runbooks),
+        "decisions": len(decisions),
+        "diagrams": len(diagrams_data),
+        "comments": len(comments),
+        "audit_log": len(audit_log),
     }
 
     # ── Write CSS & JS ─────────────────────────────────────────────────
@@ -2229,9 +3251,9 @@ def export_html(
             h.append('<h2>Session Summary</h2>')
             if ss.get("outcome"):
                 h.append(f'<p><strong>Outcome:</strong> {_esc(ss["outcome"])}</p>')
-            decisions = _json_list(ss.get("decisions_made"))
-            if decisions:
-                h.append('<p><strong>Decisions:</strong></p><ul>' + "".join(f"<li>{_esc(d)}</li>" for d in decisions) + "</ul>")
+            ss_decisions = _json_list(ss.get("decisions_made"))
+            if ss_decisions:
+                h.append('<p><strong>Decisions:</strong></p><ul>' + "".join(f"<li>{_esc(d)}</li>" for d in ss_decisions) + "</ul>")
             files = _json_list(ss.get("files_modified"))
             if files:
                 h.append('<p><strong>Files Modified:</strong></p><ul>' + "".join(f"<li><code>{_esc(f)}</code></li>" for f in files) + "</ul>")
@@ -2948,6 +3970,637 @@ def export_html(
         (out / "projects" / f"{proj_slug}.html").write_text(page, encoding="utf-8")
         file_count += 1
 
+    # ── Tickets ────────────────────────────────────────────────────────
+
+    tki = ['<h1>Tickets</h1>']
+    tki.append('<table><thead><tr><th>Number</th><th>Title</th><th>Status</th><th>Priority</th><th>Type</th><th>Project</th></tr></thead><tbody>')
+    for tk in tickets:
+        tk_slug = ticket_slugs.get(tk["id"], tk["id"])
+        tki.append(f'<tr><td>{_esc(tk["ticket_number"])}</td>'
+                   f'<td><a href="{tk_slug}.html">{_esc(tk["title"])}</a></td>'
+                   f'<td>{_html_tag(tk["status"])}</td><td>{_html_tag(tk["priority"], tk["priority"])}</td>'
+                   f'<td>{_html_tag(tk["type"])}</td>'
+                   f'<td>{_esc(tk.get("project") or "-")}</td></tr>')
+    tki.append('</tbody></table>')
+    page = _html_page("Tickets", "\n".join(tki),
+                      breadcrumbs=[("Home", "../index.html"), ("Tickets", "")],
+                      sidebar_counts=sidebar_counts, active_section="tickets", depth=1)
+    (out / "tickets" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for tk in tickets:
+        tk_slug = ticket_slugs.get(tk["id"], tk["id"])
+        h = [f'<h1>Ticket: {_esc(tk["ticket_number"])} &mdash; {_esc(tk["title"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(tk["id"])}</code>'),
+            ("Number", _esc(tk["ticket_number"])),
+            ("Status", _esc(tk["status"])),
+            ("Priority", _esc(tk["priority"])),
+            ("Type", _esc(tk["type"])),
+            ("Project", _esc(tk.get("project") or "-")),
+            ("Created", _esc(tk["created_at"])),
+        ]
+        if tk.get("assignee_id"):
+            a_slug = people_slugs.get(tk["assignee_id"], tk["assignee_id"])
+            meta.append(("Assignee", f'<a href="../people/{a_slug}.html">{_esc(tk["assignee_id"])}</a>'))
+        if tk.get("reporter_id"):
+            r_slug = people_slugs.get(tk["reporter_id"], tk["reporter_id"])
+            meta.append(("Reporter", f'<a href="../people/{r_slug}.html">{_esc(tk["reporter_id"])}</a>'))
+        if tk.get("due_date"):
+            meta.append(("Due", _esc(tk["due_date"])))
+        tags = _json_list(tk.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if tk.get("description"):
+            h.append(f'<h2>Description</h2><div class="content-block">{_md(tk["description"])}</div>')
+        page = _html_page(f'Ticket: {tk["ticket_number"]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Tickets", "index.html"), (tk["ticket_number"], "")],
+                          sidebar_counts=sidebar_counts, active_section="tickets", depth=1)
+        (out / "tickets" / f"{tk_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Endpoints ──────────────────────────────────────────────────────
+
+    epi = ['<h1>Endpoints</h1>']
+    epi.append('<table><thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Status</th><th>Project</th></tr></thead><tbody>')
+    for ep in endpoints:
+        ep_slug = endpoint_slugs.get(ep["id"], ep["id"])
+        epi.append(f'<tr><td>{_html_tag(ep["method"])}</td>'
+                   f'<td><a href="{ep_slug}.html">{_esc(ep["path"])}</a></td>'
+                   f'<td>{_esc(ep["auth_type"])}</td><td>{_html_tag(ep["status"])}</td>'
+                   f'<td>{_esc(ep.get("project") or "-")}</td></tr>')
+    epi.append('</tbody></table>')
+    page = _html_page("Endpoints", "\n".join(epi),
+                      breadcrumbs=[("Home", "../index.html"), ("Endpoints", "")],
+                      sidebar_counts=sidebar_counts, active_section="endpoints", depth=1)
+    (out / "endpoints" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for ep in endpoints:
+        ep_slug = endpoint_slugs.get(ep["id"], ep["id"])
+        h = [f'<h1>{_esc(ep["method"])} {_esc(ep["path"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(ep["id"])}</code>'),
+            ("Method", _esc(ep["method"])),
+            ("Path", _esc(ep["path"])),
+            ("Base URL", _esc(ep.get("base_url") or "-")),
+            ("Auth", _esc(ep["auth_type"])),
+            ("Status", _esc(ep["status"])),
+            ("Project", _esc(ep.get("project") or "-")),
+            ("Created", _esc(ep["created_at"])),
+        ]
+        if ep.get("rate_limit"):
+            meta.append(("Rate Limit", _esc(ep["rate_limit"])))
+        tags = _json_list(ep.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if ep.get("description"):
+            h.append(f'<h2>Description</h2><div class="content-block">{_md(ep["description"])}</div>')
+        page = _html_page(f'{ep["method"]} {ep["path"]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Endpoints", "index.html"), (f'{ep["method"]} {ep["path"][:30]}', "")],
+                          sidebar_counts=sidebar_counts, active_section="endpoints", depth=1)
+        (out / "endpoints" / f"{ep_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Credentials ────────────────────────────────────────────────────
+
+    cri = ['<h1>Credentials</h1>']
+    cri.append('<table><thead><tr><th>Name</th><th>Type</th><th>Provider</th><th>Project</th><th>Expires</th></tr></thead><tbody>')
+    for cr in credentials:
+        cr_slug = credential_slugs.get(cr["id"], cr["id"])
+        cri.append(f'<tr><td><a href="{cr_slug}.html">{_esc(cr["name"])}</a></td>'
+                   f'<td>{_html_tag(cr["type"])}</td>'
+                   f'<td>{_esc(cr.get("provider") or "-")}</td>'
+                   f'<td>{_esc(cr.get("project") or "-")}</td>'
+                   f'<td>{_esc(cr.get("expires_at") or "-")}</td></tr>')
+    cri.append('</tbody></table>')
+    page = _html_page("Credentials", "\n".join(cri),
+                      breadcrumbs=[("Home", "../index.html"), ("Credentials", "")],
+                      sidebar_counts=sidebar_counts, active_section="credentials", depth=1)
+    (out / "credentials" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for cr in credentials:
+        cr_slug = credential_slugs.get(cr["id"], cr["id"])
+        h = [f'<h1>Credential: {_esc(cr["name"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(cr["id"])}</code>'),
+            ("Type", _esc(cr["type"])),
+            ("Provider", _esc(cr.get("provider") or "-")),
+            ("Project", _esc(cr.get("project") or "-")),
+            ("Created", _esc(cr["created_at"])),
+        ]
+        if cr.get("vault_path"):
+            meta.append(("Vault Path", _esc(cr["vault_path"])))
+        if cr.get("env_var"):
+            meta.append(("Env Var", f'<code>{_esc(cr["env_var"])}</code>'))
+        if cr.get("last_rotated"):
+            meta.append(("Last Rotated", _esc(cr["last_rotated"])))
+        if cr.get("expires_at"):
+            meta.append(("Expires", _esc(cr["expires_at"])))
+        tags = _json_list(cr.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if cr.get("description"):
+            h.append(f'<h2>Description</h2><div class="content-block">{_md(cr["description"])}</div>')
+        page = _html_page(f'Credential: {cr["name"][:60]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Credentials", "index.html"), (cr["name"][:40], "")],
+                          sidebar_counts=sidebar_counts, active_section="credentials", depth=1)
+        (out / "credentials" / f"{cr_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Environments ───────────────────────────────────────────────────
+
+    evi = ['<h1>Environments</h1>']
+    evi.append('<table><thead><tr><th>Name</th><th>Type</th><th>URL</th><th>Project</th></tr></thead><tbody>')
+    for env in environments:
+        env_slug = environment_slugs.get(env["id"], env["id"])
+        evi.append(f'<tr><td><a href="{env_slug}.html">{_esc(env["name"])}</a></td>'
+                   f'<td>{_html_tag(env["type"])}</td>'
+                   f'<td>{_esc(env.get("url") or "-")}</td>'
+                   f'<td>{_esc(env.get("project") or "-")}</td></tr>')
+    evi.append('</tbody></table>')
+    page = _html_page("Environments", "\n".join(evi),
+                      breadcrumbs=[("Home", "../index.html"), ("Environments", "")],
+                      sidebar_counts=sidebar_counts, active_section="environments", depth=1)
+    (out / "environments" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for env in environments:
+        env_slug = environment_slugs.get(env["id"], env["id"])
+        h = [f'<h1>Environment: {_esc(env["name"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(env["id"])}</code>'),
+            ("Type", _esc(env["type"])),
+            ("URL", _esc(env.get("url") or "-")),
+            ("Project", _esc(env.get("project") or "-")),
+            ("Created", _esc(env["created_at"])),
+        ]
+        tags = _json_list(env.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if env.get("description"):
+            h.append(f'<h2>Description</h2><div class="content-block">{_md(env["description"])}</div>')
+        page = _html_page(f'Environment: {env["name"][:60]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Environments", "index.html"), (env["name"][:40], "")],
+                          sidebar_counts=sidebar_counts, active_section="environments", depth=1)
+        (out / "environments" / f"{env_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Deployments ────────────────────────────────────────────────────
+
+    dpi = ['<h1>Deployments</h1>']
+    dpi.append('<table><thead><tr><th>Version</th><th>Status</th><th>Strategy</th><th>Project</th><th>Deployed</th></tr></thead><tbody>')
+    for dep in deployments:
+        dep_slug = deployment_slugs.get(dep["id"], dep["id"])
+        dpi.append(f'<tr><td><a href="{dep_slug}.html">{_esc(dep["version"])}</a></td>'
+                   f'<td>{_html_tag(dep["status"])}</td><td>{_esc(dep["strategy"])}</td>'
+                   f'<td>{_esc(dep.get("project") or "-")}</td>'
+                   f'<td>{_esc((dep.get("deployed_at") or "")[:10])}</td></tr>')
+    dpi.append('</tbody></table>')
+    page = _html_page("Deployments", "\n".join(dpi),
+                      breadcrumbs=[("Home", "../index.html"), ("Deployments", "")],
+                      sidebar_counts=sidebar_counts, active_section="deployments", depth=1)
+    (out / "deployments" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for dep in deployments:
+        dep_slug = deployment_slugs.get(dep["id"], dep["id"])
+        h = [f'<h1>Deployment: {_esc(dep["version"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(dep["id"])}</code>'),
+            ("Version", _esc(dep["version"])),
+            ("Status", _esc(dep["status"])),
+            ("Strategy", _esc(dep["strategy"])),
+            ("Project", _esc(dep.get("project") or "-")),
+            ("Created", _esc(dep["created_at"])),
+        ]
+        if dep.get("environment_id"):
+            env_s = environment_slugs.get(dep["environment_id"], dep["environment_id"])
+            meta.append(("Environment", f'<a href="../environments/{env_s}.html">{_esc(dep["environment_id"])}</a>'))
+        if dep.get("deployed_by"):
+            meta.append(("Deployed By", _esc(dep["deployed_by"])))
+        if dep.get("deployed_at"):
+            meta.append(("Deployed At", _esc(dep["deployed_at"])))
+        tags = _json_list(dep.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if dep.get("description"):
+            h.append(f'<h2>Description</h2><div class="content-block">{_md(dep["description"])}</div>')
+        page = _html_page(f'Deployment: {dep["version"][:60]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Deployments", "index.html"), (dep["version"][:40], "")],
+                          sidebar_counts=sidebar_counts, active_section="deployments", depth=1)
+        (out / "deployments" / f"{dep_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Builds ─────────────────────────────────────────────────────────
+
+    bdi = ['<h1>Builds</h1>']
+    bdi.append('<table><thead><tr><th>Name</th><th>Pipeline</th><th>Status</th><th>Trigger</th><th>Project</th><th>Duration</th></tr></thead><tbody>')
+    for bd in builds_data:
+        bd_slug = build_slugs.get(bd["id"], bd["id"])
+        dur = f'{bd["duration_seconds"]}s' if bd.get("duration_seconds") else "-"
+        bdi.append(f'<tr><td><a href="{bd_slug}.html">{_esc(bd["name"])}</a></td>'
+                   f'<td>{_esc(bd.get("pipeline") or "-")}</td>'
+                   f'<td>{_html_tag(bd["status"])}</td><td>{_esc(bd["trigger_type"])}</td>'
+                   f'<td>{_esc(bd.get("project") or "-")}</td><td>{_esc(dur)}</td></tr>')
+    bdi.append('</tbody></table>')
+    page = _html_page("Builds", "\n".join(bdi),
+                      breadcrumbs=[("Home", "../index.html"), ("Builds", "")],
+                      sidebar_counts=sidebar_counts, active_section="builds", depth=1)
+    (out / "builds" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for bd in builds_data:
+        bd_slug = build_slugs.get(bd["id"], bd["id"])
+        h = [f'<h1>Build: {_esc(bd["name"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(bd["id"])}</code>'),
+            ("Pipeline", _esc(bd.get("pipeline") or "-")),
+            ("Status", _esc(bd["status"])),
+            ("Trigger", _esc(bd["trigger_type"])),
+            ("Project", _esc(bd.get("project") or "-")),
+            ("Created", _esc(bd["created_at"])),
+        ]
+        if bd.get("commit_sha"):
+            meta.append(("Commit", f'<code>{_esc(bd["commit_sha"])}</code>'))
+        if bd.get("branch"):
+            meta.append(("Branch", _esc(bd["branch"])))
+        if bd.get("duration_seconds"):
+            meta.append(("Duration", f'{bd["duration_seconds"]}s'))
+        if bd.get("artifact_url"):
+            meta.append(("Artifact", _esc(bd["artifact_url"])))
+        tags = _json_list(bd.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        page = _html_page(f'Build: {bd["name"][:60]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Builds", "index.html"), (bd["name"][:40], "")],
+                          sidebar_counts=sidebar_counts, active_section="builds", depth=1)
+        (out / "builds" / f"{bd_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Incidents ──────────────────────────────────────────────────────
+
+    ini = ['<h1>Incidents</h1>']
+    ini.append('<table><thead><tr><th>Title</th><th>Severity</th><th>Status</th><th>Project</th><th>Started</th></tr></thead><tbody>')
+    for inc in incidents:
+        inc_slug = incident_slugs.get(inc["id"], inc["id"])
+        ini.append(f'<tr><td><a href="{inc_slug}.html">{_esc(inc["title"])}</a></td>'
+                   f'<td>{_html_tag(inc["severity"], inc["severity"])}</td>'
+                   f'<td>{_html_tag(inc["status"])}</td>'
+                   f'<td>{_esc(inc.get("project") or "-")}</td>'
+                   f'<td>{_esc((inc.get("started_at") or "")[:10])}</td></tr>')
+    ini.append('</tbody></table>')
+    page = _html_page("Incidents", "\n".join(ini),
+                      breadcrumbs=[("Home", "../index.html"), ("Incidents", "")],
+                      sidebar_counts=sidebar_counts, active_section="incidents", depth=1)
+    (out / "incidents" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for inc in incidents:
+        inc_slug = incident_slugs.get(inc["id"], inc["id"])
+        h = [f'<h1>Incident: {_esc(inc["title"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(inc["id"])}</code>'),
+            ("Severity", _esc(inc["severity"])),
+            ("Status", _esc(inc["status"])),
+            ("Project", _esc(inc.get("project") or "-")),
+            ("Created", _esc(inc["created_at"])),
+        ]
+        if inc.get("lead_id"):
+            l_slug = people_slugs.get(inc["lead_id"], inc["lead_id"])
+            meta.append(("Lead", f'<a href="../people/{l_slug}.html">{_esc(inc["lead_id"])}</a>'))
+        if inc.get("started_at"):
+            meta.append(("Started", _esc(inc["started_at"])))
+        if inc.get("resolved_at"):
+            meta.append(("Resolved", _esc(inc["resolved_at"])))
+        tags = _json_list(inc.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if inc.get("description"):
+            h.append(f'<h2>Description</h2><div class="content-block">{_md(inc["description"])}</div>')
+        if inc.get("root_cause"):
+            h.append(f'<h2>Root Cause</h2><div class="content-block">{_md(inc["root_cause"])}</div>')
+        if inc.get("resolution"):
+            h.append(f'<h2>Resolution</h2><div class="content-block">{_md(inc["resolution"])}</div>')
+        timeline = _json_list(inc.get("timeline"))
+        if timeline:
+            h.append('<h2>Timeline</h2><ul>' + "".join(f"<li>{_esc(t)}</li>" for t in timeline) + "</ul>")
+        page = _html_page(f'Incident: {inc["title"][:60]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Incidents", "index.html"), (inc["title"][:40], "")],
+                          sidebar_counts=sidebar_counts, active_section="incidents", depth=1)
+        (out / "incidents" / f"{inc_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Dependencies ───────────────────────────────────────────────────
+
+    ddi = ['<h1>Dependencies</h1>']
+    ddi.append('<table><thead><tr><th>Name</th><th>Version</th><th>Type</th><th>License</th><th>Project</th></tr></thead><tbody>')
+    for dp in dependencies:
+        dp_slug = dependency_slugs.get(dp["id"], dp["id"])
+        ddi.append(f'<tr><td><a href="{dp_slug}.html">{_esc(dp["name"])}</a></td>'
+                   f'<td>{_esc(dp.get("version") or "-")}</td>'
+                   f'<td>{_html_tag(dp["type"])}</td>'
+                   f'<td>{_esc(dp.get("license") or "-")}</td>'
+                   f'<td>{_esc(dp.get("project") or "-")}</td></tr>')
+    ddi.append('</tbody></table>')
+    page = _html_page("Dependencies", "\n".join(ddi),
+                      breadcrumbs=[("Home", "../index.html"), ("Dependencies", "")],
+                      sidebar_counts=sidebar_counts, active_section="dependencies", depth=1)
+    (out / "dependencies" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for dp in dependencies:
+        dp_slug = dependency_slugs.get(dp["id"], dp["id"])
+        h = [f'<h1>Dependency: {_esc(dp["name"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(dp["id"])}</code>'),
+            ("Version", _esc(dp.get("version") or "-")),
+            ("Type", _esc(dp["type"])),
+            ("Project", _esc(dp.get("project") or "-")),
+            ("Created", _esc(dp["created_at"])),
+        ]
+        if dp.get("source"):
+            meta.append(("Source", _esc(dp["source"])))
+        if dp.get("license"):
+            meta.append(("License", _esc(dp["license"])))
+        if dp.get("pinned_version"):
+            meta.append(("Pinned", _esc(dp["pinned_version"])))
+        if dp.get("latest_version"):
+            meta.append(("Latest", _esc(dp["latest_version"])))
+        tags = _json_list(dp.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if dp.get("description"):
+            h.append(f'<h2>Description</h2><div class="content-block">{_md(dp["description"])}</div>')
+        page = _html_page(f'Dependency: {dp["name"][:60]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Dependencies", "index.html"), (dp["name"][:40], "")],
+                          sidebar_counts=sidebar_counts, active_section="dependencies", depth=1)
+        (out / "dependencies" / f"{dp_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Runbooks ───────────────────────────────────────────────────────
+
+    rbi = ['<h1>Runbooks</h1>']
+    rbi.append('<table><thead><tr><th>Title</th><th>Project</th><th>Last Executed</th></tr></thead><tbody>')
+    for rb in runbooks:
+        rb_slug = runbook_slugs.get(rb["id"], rb["id"])
+        rbi.append(f'<tr><td><a href="{rb_slug}.html">{_esc(rb["title"])}</a></td>'
+                   f'<td>{_esc(rb.get("project") or "-")}</td>'
+                   f'<td>{_esc(rb.get("last_executed") or "-")}</td></tr>')
+    rbi.append('</tbody></table>')
+    page = _html_page("Runbooks", "\n".join(rbi),
+                      breadcrumbs=[("Home", "../index.html"), ("Runbooks", "")],
+                      sidebar_counts=sidebar_counts, active_section="runbooks", depth=1)
+    (out / "runbooks" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for rb in runbooks:
+        rb_slug = runbook_slugs.get(rb["id"], rb["id"])
+        h = [f'<h1>Runbook: {_esc(rb["title"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(rb["id"])}</code>'),
+            ("Project", _esc(rb.get("project") or "-")),
+            ("Created", _esc(rb["created_at"])),
+        ]
+        if rb.get("trigger_conditions"):
+            meta.append(("Trigger", _esc(rb["trigger_conditions"])))
+        if rb.get("last_executed"):
+            meta.append(("Last Executed", _esc(rb["last_executed"])))
+        tags = _json_list(rb.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if rb.get("description"):
+            h.append(f'<h2>Description</h2><div class="content-block">{_md(rb["description"])}</div>')
+        steps = _json_list(rb.get("steps"))
+        if steps:
+            h.append('<h2>Steps</h2><ol>' + "".join(f"<li>{_esc(s)}</li>" for s in steps) + "</ol>")
+        page = _html_page(f'Runbook: {rb["title"][:60]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Runbooks", "index.html"), (rb["title"][:40], "")],
+                          sidebar_counts=sidebar_counts, active_section="runbooks", depth=1)
+        (out / "runbooks" / f"{rb_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Decisions ──────────────────────────────────────────────────────
+
+    dci = ['<h1>Decisions</h1>']
+    dci.append('<table><thead><tr><th>Title</th><th>Status</th><th>Project</th><th>Decided</th></tr></thead><tbody>')
+    for dec in decisions:
+        dec_slug = decision_slugs.get(dec["id"], dec["id"])
+        dci.append(f'<tr><td><a href="{dec_slug}.html">{_esc(dec["title"])}</a></td>'
+                   f'<td>{_html_tag(dec["status"])}</td>'
+                   f'<td>{_esc(dec.get("project") or "-")}</td>'
+                   f'<td>{_esc((dec.get("decided_at") or "")[:10])}</td></tr>')
+    dci.append('</tbody></table>')
+    page = _html_page("Decisions", "\n".join(dci),
+                      breadcrumbs=[("Home", "../index.html"), ("Decisions", "")],
+                      sidebar_counts=sidebar_counts, active_section="decisions", depth=1)
+    (out / "decisions" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for dec in decisions:
+        dec_slug = decision_slugs.get(dec["id"], dec["id"])
+        h = [f'<h1>Decision: {_esc(dec["title"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(dec["id"])}</code>'),
+            ("Status", _esc(dec["status"])),
+            ("Project", _esc(dec.get("project") or "-")),
+            ("Created", _esc(dec["created_at"])),
+        ]
+        if dec.get("author_id"):
+            a_slug = people_slugs.get(dec["author_id"], dec["author_id"])
+            meta.append(("Author", f'<a href="../people/{a_slug}.html">{_esc(dec["author_id"])}</a>'))
+        if dec.get("decided_at"):
+            meta.append(("Decided", _esc(dec["decided_at"])))
+        if dec.get("superseded_by"):
+            meta.append(("Superseded By", _esc(dec["superseded_by"])))
+        tags = _json_list(dec.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if dec.get("context"):
+            h.append(f'<h2>Context</h2><div class="content-block">{_md(dec["context"])}</div>')
+        options = _json_list(dec.get("options"))
+        if options:
+            h.append('<h2>Options</h2><ul>' + "".join(f"<li>{_esc(o)}</li>" for o in options) + "</ul>")
+        if dec.get("outcome"):
+            h.append(f'<h2>Outcome</h2><div class="content-block">{_md(dec["outcome"])}</div>')
+        if dec.get("consequences"):
+            h.append(f'<h2>Consequences</h2><div class="content-block">{_md(dec["consequences"])}</div>')
+        page = _html_page(f'Decision: {dec["title"][:60]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Decisions", "index.html"), (dec["title"][:40], "")],
+                          sidebar_counts=sidebar_counts, active_section="decisions", depth=1)
+        (out / "decisions" / f"{dec_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Diagrams ──────────────────────────────────────────────────────
+
+    dgi = ['<h1>Diagrams</h1>']
+    dgi.append('<table><thead><tr><th>Title</th><th>Type</th><th>Project</th><th>Updated</th></tr></thead><tbody>')
+    for diag in diagrams_data:
+        diag_slug = diagram_slugs.get(diag["id"], diag["id"])
+        dgi.append(f'<tr><td><a href="{diag_slug}.html">{_esc(diag["title"])}</a></td>'
+                   f'<td>{_html_tag(diag["diagram_type"])}</td>'
+                   f'<td>{_esc(diag.get("project") or "-")}</td>'
+                   f'<td>{_esc(diag["updated_at"][:10])}</td></tr>')
+    dgi.append('</tbody></table>')
+    page = _html_page("Diagrams", "\n".join(dgi),
+                      breadcrumbs=[("Home", "../index.html"), ("Diagrams", "")],
+                      sidebar_counts=sidebar_counts, active_section="diagrams", depth=1)
+    (out / "diagrams" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for diag in diagrams_data:
+        diag_slug = diagram_slugs.get(diag["id"], diag["id"])
+        dtype = diag["diagram_type"]
+        h = [f'<h1>Diagram: {_esc(diag["title"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(diag["id"])}</code>'),
+            ("Type", _html_tag(dtype)),
+            ("Project", _esc(diag.get("project") or "-")),
+            ("Created", _esc(diag["created_at"])),
+            ("Updated", _esc(diag["updated_at"])),
+        ]
+        tags = _json_list(diag.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if diag.get("description"):
+            h.append(f'<h2>Description</h2><div class="content-block">{_md(diag["description"])}</div>')
+
+        defn = diag.get("definition", "")
+        extra_head = ""
+        extra_body_end = ""
+        safe_id = diag["id"].replace("-", "").replace("_", "")[:16]
+
+        if defn:
+            if dtype == "mermaid":
+                h.append(f'<h2>Diagram</h2><pre class="mermaid">{defn}</pre>')
+                extra_head = '<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>'
+                extra_body_end = '<script>mermaid.initialize({startOnLoad:true, theme:"dark"});</script>'
+            elif dtype == "chart":
+                h.append(f'<h2>Chart</h2><div class="diagram-container"><canvas id="chart-{safe_id}"></canvas></div>')
+                extra_head = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>'
+                extra_body_end = f'<script>new Chart(document.getElementById("chart-{safe_id}"), {defn});</script>'
+            elif dtype in ("network", "servicemap"):
+                h.append(f'<h2>{"Service Map" if dtype == "servicemap" else "Network Graph"}</h2>'
+                         f'<div class="diagram-container" id="network-graph"></div>')
+                extra_head = '<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>'
+                extra_body_end = f"""<script>
+(function() {{
+  var data = {defn};
+  var nodes = data.nodes || [];
+  var links = (data.edges || data.links || []).map(function(e) {{
+    return {{source: e.source || e.from, target: e.target || e.to, label: e.label || ""}};
+  }});
+  var container = document.getElementById("network-graph");
+  var width = container.clientWidth || 800;
+  var height = Math.max(400, nodes.length * 20);
+  var svg = d3.select(container).append("svg").attr("width", width).attr("height", height);
+  var sim = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(function(d) {{ return d.id; }}).distance(120))
+    .force("charge", d3.forceManyBody().strength(-300))
+    .force("center", d3.forceCenter(width/2, height/2));
+  var link = svg.append("g").selectAll("line").data(links).join("line")
+    .attr("class", "link").attr("stroke", "#555").attr("stroke-opacity", 0.6);
+  var node = svg.append("g").selectAll("g").data(nodes).join("g").call(
+    d3.drag().on("start", function(e,d) {{ if(!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; }})
+      .on("drag", function(e,d) {{ d.fx=e.x; d.fy=e.y; }})
+      .on("end", function(e,d) {{ if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }})
+  );
+  node.append("circle").attr("r", 8).attr("fill", function(d) {{ return d.color || "#58a6ff"; }});
+  node.append("text").text(function(d) {{ return d.label || d.id; }})
+    .attr("dx", 12).attr("dy", 4).attr("fill", "#c9d1d9").style("font-size", "11px");
+  sim.on("tick", function() {{
+    link.attr("x1",function(d){{return d.source.x;}}).attr("y1",function(d){{return d.source.y;}})
+        .attr("x2",function(d){{return d.target.x;}}).attr("y2",function(d){{return d.target.y;}});
+    node.attr("transform", function(d) {{ return "translate("+d.x+","+d.y+")"; }});
+  }});
+}})();
+</script>"""
+            elif dtype == "table":
+                # Render as HTML table from JSON
+                try:
+                    tdata = json.loads(defn)
+                    cols = tdata.get("columns", [])
+                    rows = tdata.get("rows", [])
+                    th = "<tr>" + "".join(f"<th>{_esc(str(c))}</th>" for c in cols) + "</tr>"
+                    tbody = ""
+                    for row in rows:
+                        if isinstance(row, dict):
+                            cells = "".join(f"<td>{_esc(str(row.get(c, '')))}</td>" for c in cols)
+                        elif isinstance(row, list):
+                            cells = "".join(f"<td>{_esc(str(v))}</td>" for v in row)
+                        else:
+                            cells = f"<td>{_esc(str(row))}</td>"
+                        tbody += f"<tr>{cells}</tr>"
+                    h.append(f'<h2>Table</h2><table><thead>{th}</thead><tbody>{tbody}</tbody></table>')
+                except (ValueError, TypeError):
+                    h.append(f'<h2>Definition</h2><div class="content-block"><pre><code>{_esc(defn)}</code></pre></div>')
+
+            # Show raw source in collapsible details
+            h.append(f'<details class="diagram-source"><summary>View source</summary>'
+                     f'<pre><code>{_esc(defn)}</code></pre></details>')
+
+        page = _html_page(f'Diagram: {diag["title"][:60]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Diagrams", "index.html"), (diag["title"][:40], "")],
+                          sidebar_counts=sidebar_counts, active_section="diagrams", depth=1,
+                          extra_head=extra_head, extra_body_end=extra_body_end)
+        (out / "diagrams" / f"{diag_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
+    # ── Instructions ───────────────────────────────────────────────────
+
+    isi = ['<h1>Instructions</h1>']
+    isi.append('<table><thead><tr><th>Title</th><th>Section</th><th>Priority</th><th>Scope</th><th>Active</th></tr></thead><tbody>')
+    for ins in instructions_data:
+        ins_slug = instruction_slugs.get(ins["id"], ins["id"])
+        active = "Yes" if ins.get("active") else "No"
+        isi.append(f'<tr><td><a href="{ins_slug}.html">{_esc(ins["title"])}</a></td>'
+                   f'<td>{_esc(ins["section"])}</td>'
+                   f'<td>{_html_tag(ins["priority"], ins["priority"])}</td>'
+                   f'<td>{_esc(ins["scope"])}</td><td>{_esc(active)}</td></tr>')
+    isi.append('</tbody></table>')
+    page = _html_page("Instructions", "\n".join(isi),
+                      breadcrumbs=[("Home", "../index.html"), ("Instructions", "")],
+                      sidebar_counts=sidebar_counts, active_section="instructions", depth=1)
+    (out / "instructions" / "index.html").write_text(page, encoding="utf-8")
+    file_count += 1
+
+    for ins in instructions_data:
+        ins_slug = instruction_slugs.get(ins["id"], ins["id"])
+        h = [f'<h1>Instruction: {_esc(ins["title"])}</h1>']
+        meta = [
+            ("ID", f'<code>{_esc(ins["id"])}</code>'),
+            ("Section", _esc(ins["section"])),
+            ("Priority", _esc(ins["priority"])),
+            ("Scope", _esc(ins["scope"])),
+            ("Active", "Yes" if ins.get("active") else "No"),
+            ("Position", str(ins["position"])),
+            ("Project", _esc(ins.get("project") or "-")),
+            ("Created", _esc(ins["created_at"])),
+        ]
+        tags = _json_list(ins.get("tags"))
+        if tags:
+            meta.append(("Tags", " ".join(_html_tag(t) for t in tags)))
+        h.append(_html_meta_table(meta))
+        if ins.get("content"):
+            h.append(f'<h2>Content</h2><div class="content-block">{_md(ins["content"])}</div>')
+        page = _html_page(f'Instruction: {ins["title"][:60]}', "\n".join(h),
+                          breadcrumbs=[("Home", "../index.html"), ("Instructions", "index.html"), (ins["title"][:40], "")],
+                          sidebar_counts=sidebar_counts, active_section="instructions", depth=1)
+        (out / "instructions" / f"{ins_slug}.html").write_text(page, encoding="utf-8")
+        file_count += 1
+
     # ── Agents ─────────────────────────────────────────────────────────
 
     ai = ['<h1>Agent Stats</h1>']
@@ -3072,6 +4725,87 @@ def export_html(
             "content": (tm.get("description") or "")[:300],
             "keywords": _json_list(tm.get("tags")),
             "url": f"teams/{tm_slug}.html",
+        })
+    for tk in tickets:
+        tk_slug = ticket_slugs.get(tk["id"], tk["id"])
+        search_items.append({
+            "type": "ticket", "id": tk["id"],
+            "title": f'{tk["ticket_number"]}: {tk["title"]}',
+            "content": (tk.get("description") or "")[:300],
+            "keywords": _json_list(tk.get("tags")),
+            "url": f"tickets/{tk_slug}.html",
+        })
+    for ep in endpoints:
+        ep_slug = endpoint_slugs.get(ep["id"], ep["id"])
+        search_items.append({
+            "type": "endpoint", "id": ep["id"],
+            "title": f'{ep["method"]} {ep["path"]}',
+            "content": (ep.get("description") or "")[:300],
+            "keywords": _json_list(ep.get("tags")),
+            "url": f"endpoints/{ep_slug}.html",
+        })
+    for inc in incidents:
+        inc_slug = incident_slugs.get(inc["id"], inc["id"])
+        search_items.append({
+            "type": "incident", "id": inc["id"],
+            "title": inc["title"],
+            "content": (inc.get("description") or "")[:300],
+            "keywords": _json_list(inc.get("tags")),
+            "url": f"incidents/{inc_slug}.html",
+        })
+    for dec in decisions:
+        dec_slug = decision_slugs.get(dec["id"], dec["id"])
+        search_items.append({
+            "type": "decision", "id": dec["id"],
+            "title": dec["title"],
+            "content": (dec.get("context") or "")[:300],
+            "keywords": _json_list(dec.get("tags")),
+            "url": f"decisions/{dec_slug}.html",
+        })
+    for rb in runbooks:
+        rb_slug = runbook_slugs.get(rb["id"], rb["id"])
+        search_items.append({
+            "type": "runbook", "id": rb["id"],
+            "title": rb["title"],
+            "content": (rb.get("description") or "")[:300],
+            "keywords": _json_list(rb.get("tags")),
+            "url": f"runbooks/{rb_slug}.html",
+        })
+    for ins in instructions_data:
+        ins_slug = instruction_slugs.get(ins["id"], ins["id"])
+        search_items.append({
+            "type": "instruction", "id": ins["id"],
+            "title": ins["title"],
+            "content": (ins.get("content") or "")[:300],
+            "keywords": _json_list(ins.get("tags")),
+            "url": f"instructions/{ins_slug}.html",
+        })
+    for dp in dependencies:
+        dp_slug = dependency_slugs.get(dp["id"], dp["id"])
+        search_items.append({
+            "type": "dependency", "id": dp["id"],
+            "title": dp["name"],
+            "content": (dp.get("description") or "")[:300],
+            "keywords": _json_list(dp.get("tags")),
+            "url": f"dependencies/{dp_slug}.html",
+        })
+    for cr in credentials:
+        cr_slug = credential_slugs.get(cr["id"], cr["id"])
+        search_items.append({
+            "type": "credential", "id": cr["id"],
+            "title": cr["name"],
+            "content": (cr.get("description") or "")[:300],
+            "keywords": _json_list(cr.get("tags")),
+            "url": f"credentials/{cr_slug}.html",
+        })
+    for diag in diagrams_data:
+        diag_slug = diagram_slugs.get(diag["id"], diag["id"])
+        search_items.append({
+            "type": "diagram", "id": diag["id"],
+            "title": diag["title"],
+            "content": (diag.get("description") or "")[:300],
+            "keywords": _json_list(diag.get("tags")),
+            "url": f"diagrams/{diag_slug}.html",
         })
 
     (out / "search-index.json").write_text(json.dumps(search_items, ensure_ascii=False, indent=None), encoding="utf-8")

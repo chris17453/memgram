@@ -21,7 +21,7 @@ TOOLS = [
                 "lead_id": {"type": "string", "description": "Person ID of the team lead"},
                 "tags": {"type": "array", "items": {"type": "string"}},
             },
-            "required": ["name"],
+            "required": ["name", "project"],
         },
     ),
     Tool(

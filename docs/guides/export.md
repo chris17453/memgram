@@ -1,8 +1,8 @@
-# Markdown Export
+# Export
 
-The `memgram export` command dumps the entire database as a tree of linked markdown files with human-readable slugs (no opaque IDs). Useful for auditing, sharing, or backing up your knowledge base.
+Memgram supports two export formats: **markdown** (linked `.md` files) and **web** (navigable HTML site). Both produce human-readable slugs (no opaque IDs) and support project filtering. Useful for auditing, sharing, or backing up your knowledge base.
 
-## Usage
+## Markdown Export
 
 ```bash
 # Default: exports to ./memgram-export/
@@ -11,8 +11,33 @@ memgram export
 # Custom output directory
 memgram export -o ./my-export
 
+# Export only a specific project
+memgram export --project myapp
+
 # Custom database path
 memgram --db-path /path/to/memgram.db export -o ./my-export
+```
+
+## Web Export
+
+Export as a navigable Jekyll HTML website — GitHub Pages ready, no build step needed.
+
+```bash
+# Default: exports to ./memgram-web/
+memgram export-web
+
+# Custom output directory
+memgram export-web -o ./my-site
+
+# Export only a specific project
+memgram export-web --project myapp
+```
+
+After export, browse locally:
+
+```bash
+python -m http.server -d memgram-web
+# or just open memgram-web/index.html
 ```
 
 ## Output Structure

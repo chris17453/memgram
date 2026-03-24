@@ -1492,7 +1492,857 @@ class MemgramDB:
 
         return context
 
+    # ── Endpoints ───────────────────────────────────────────────────────
+
+    def create_endpoint(
+        self, path: str, project: Optional[str] = None, method: str = "GET",
+        base_url: str = "", description: str = "", auth_type: str = "none",
+        rate_limit: Optional[str] = None, request_schema: Optional[dict] = None,
+        response_schema: Optional[dict] = None, status: str = "active",
+        branch: Optional[str] = None, tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        eid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO endpoints (id,method,path,base_url,description,auth_type,rate_limit,
+                request_schema,response_schema,status,project,branch,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (eid, method, path, base_url, description, auth_type, rate_limit,
+             self.backend.encode_json(request_schema or {}),
+             self.backend.encode_json(response_schema or {}),
+             status, project, branch, self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM endpoints WHERE id={p}", (eid,))
+
+    def update_endpoint(self, endpoint_id: str, **fields) -> Optional[dict]:
+        allowed = {"method", "path", "base_url", "description", "auth_type", "rate_limit",
+                    "request_schema", "response_schema", "status", "project", "branch", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM endpoints WHERE id={self._p}", (endpoint_id,))
+        for jf in ("request_schema", "response_schema", "tags"):
+            if jf in updates and isinstance(updates[jf], (list, dict)):
+                updates[jf] = self.backend.encode_json(updates[jf])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [endpoint_id]
+        self.backend.execute(f"UPDATE endpoints SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM endpoints WHERE id={p}", (endpoint_id,))
+
+    def get_endpoint(self, endpoint_id: str) -> Optional[dict]:
+        return self.backend.fetchone(f"SELECT * FROM endpoints WHERE id={self._p}", (endpoint_id,))
+
+    def list_endpoints(self, project: Optional[str] = None, branch: Optional[str] = None,
+                       method: Optional[str] = None, status: Optional[str] = None, limit: int = 50) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM endpoints WHERE 1=1", []
+        if project: q += f" AND project={p}"; params.append(project)
+        if branch: q += f" AND branch={p}"; params.append(branch)
+        if method: q += f" AND method={p}"; params.append(method)
+        if status: q += f" AND status={p}"; params.append(status)
+        q += f" ORDER BY path ASC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Credentials ─────────────────────────────────────────────────────
+
+    def create_credential(
+        self, name: str, project: Optional[str] = None, type: str = "api_key",
+        provider: str = "", vault_path: Optional[str] = None, env_var: Optional[str] = None,
+        description: str = "", last_rotated: Optional[str] = None,
+        expires_at: Optional[str] = None, tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        cid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO credentials (id,name,type,provider,vault_path,env_var,description,
+                project,last_rotated,expires_at,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (cid, name, type, provider, vault_path, env_var, description, project,
+             last_rotated, expires_at, self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM credentials WHERE id={p}", (cid,))
+
+    def update_credential(self, credential_id: str, **fields) -> Optional[dict]:
+        allowed = {"name", "type", "provider", "vault_path", "env_var", "description",
+                    "project", "last_rotated", "expires_at", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM credentials WHERE id={self._p}", (credential_id,))
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [credential_id]
+        self.backend.execute(f"UPDATE credentials SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM credentials WHERE id={p}", (credential_id,))
+
+    def get_credential(self, credential_id: str) -> Optional[dict]:
+        return self.backend.fetchone(f"SELECT * FROM credentials WHERE id={self._p}", (credential_id,))
+
+    def list_credentials(self, project: Optional[str] = None, type: Optional[str] = None,
+                         provider: Optional[str] = None, limit: int = 50) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM credentials WHERE 1=1", []
+        if project: q += f" AND project={p}"; params.append(project)
+        if type: q += f" AND type={p}"; params.append(type)
+        if provider: q += f" AND provider={p}"; params.append(provider)
+        q += f" ORDER BY name ASC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Environments ────────────────────────────────────────────────────
+
+    def create_environment(
+        self, name: str, project: Optional[str] = None, type: str = "development",
+        url: Optional[str] = None, description: str = "",
+        config: Optional[dict] = None, tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        eid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO environments (id,name,type,url,description,project,config,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (eid, name, type, url, description, project,
+             self.backend.encode_json(config or {}), self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM environments WHERE id={p}", (eid,))
+
+    def update_environment(self, environment_id: str, **fields) -> Optional[dict]:
+        allowed = {"name", "type", "url", "description", "project", "config", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM environments WHERE id={self._p}", (environment_id,))
+        for jf in ("config", "tags"):
+            if jf in updates and isinstance(updates[jf], (list, dict)):
+                updates[jf] = self.backend.encode_json(updates[jf])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [environment_id]
+        self.backend.execute(f"UPDATE environments SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM environments WHERE id={p}", (environment_id,))
+
+    def get_environment(self, environment_id: str) -> Optional[dict]:
+        return self.backend.fetchone(f"SELECT * FROM environments WHERE id={self._p}", (environment_id,))
+
+    def list_environments(self, project: Optional[str] = None, type: Optional[str] = None,
+                          limit: int = 50) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM environments WHERE 1=1", []
+        if project: q += f" AND project={p}"; params.append(project)
+        if type: q += f" AND type={p}"; params.append(type)
+        q += f" ORDER BY name ASC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Deployments ─────────────────────────────────────────────────────
+
+    def create_deployment(
+        self, version: str, project: Optional[str] = None,
+        environment_id: Optional[str] = None, status: str = "pending",
+        strategy: str = "rolling", description: str = "",
+        branch: Optional[str] = None, session_id: Optional[str] = None,
+        deployed_by: Optional[str] = None, rollback_to: Optional[str] = None,
+        deployed_at: Optional[str] = None, tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        did = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO deployments (id,version,environment_id,status,strategy,description,
+                project,branch,session_id,deployed_by,rollback_to,deployed_at,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (did, version, environment_id, status, strategy, description, project, branch,
+             session_id, deployed_by, rollback_to, deployed_at,
+             self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM deployments WHERE id={p}", (did,))
+
+    def update_deployment(self, deployment_id: str, **fields) -> Optional[dict]:
+        allowed = {"version", "environment_id", "status", "strategy", "description",
+                    "project", "branch", "session_id", "deployed_by", "rollback_to", "deployed_at", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM deployments WHERE id={self._p}", (deployment_id,))
+        if updates.get("status") == "deployed" and "deployed_at" not in updates:
+            updates["deployed_at"] = now_iso()
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [deployment_id]
+        self.backend.execute(f"UPDATE deployments SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM deployments WHERE id={p}", (deployment_id,))
+
+    def get_deployment(self, deployment_id: str) -> Optional[dict]:
+        return self.backend.fetchone(f"SELECT * FROM deployments WHERE id={self._p}", (deployment_id,))
+
+    def list_deployments(self, project: Optional[str] = None, branch: Optional[str] = None,
+                         status: Optional[str] = None, environment_id: Optional[str] = None,
+                         limit: int = 50) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM deployments WHERE 1=1", []
+        if project: q += f" AND project={p}"; params.append(project)
+        if branch: q += f" AND branch={p}"; params.append(branch)
+        if status: q += f" AND status={p}"; params.append(status)
+        if environment_id: q += f" AND environment_id={p}"; params.append(environment_id)
+        q += f" ORDER BY created_at DESC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Builds ──────────────────────────────────────────────────────────
+
+    def create_build(
+        self, name: str, project: Optional[str] = None, pipeline: str = "",
+        status: str = "pending", trigger_type: str = "push",
+        commit_sha: Optional[str] = None, branch: Optional[str] = None,
+        artifact_url: Optional[str] = None, duration_seconds: Optional[int] = None,
+        session_id: Optional[str] = None, started_at: Optional[str] = None,
+        finished_at: Optional[str] = None, tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        bid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO builds (id,name,pipeline,status,trigger_type,commit_sha,branch,
+                artifact_url,duration_seconds,project,session_id,started_at,finished_at,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (bid, name, pipeline, status, trigger_type, commit_sha, branch, artifact_url,
+             duration_seconds, project, session_id, started_at, finished_at,
+             self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM builds WHERE id={p}", (bid,))
+
+    def update_build(self, build_id: str, **fields) -> Optional[dict]:
+        allowed = {"name", "pipeline", "status", "trigger_type", "commit_sha", "branch",
+                    "artifact_url", "duration_seconds", "project", "session_id",
+                    "started_at", "finished_at", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM builds WHERE id={self._p}", (build_id,))
+        if updates.get("status") in ("passed", "failed", "cancelled") and "finished_at" not in updates:
+            updates["finished_at"] = now_iso()
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [build_id]
+        self.backend.execute(f"UPDATE builds SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM builds WHERE id={p}", (build_id,))
+
+    def get_build(self, build_id: str) -> Optional[dict]:
+        return self.backend.fetchone(f"SELECT * FROM builds WHERE id={self._p}", (build_id,))
+
+    def list_builds(self, project: Optional[str] = None, branch: Optional[str] = None,
+                    status: Optional[str] = None, pipeline: Optional[str] = None,
+                    limit: int = 50) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM builds WHERE 1=1", []
+        if project: q += f" AND project={p}"; params.append(project)
+        if branch: q += f" AND branch={p}"; params.append(branch)
+        if status: q += f" AND status={p}"; params.append(status)
+        if pipeline: q += f" AND pipeline={p}"; params.append(pipeline)
+        q += f" ORDER BY created_at DESC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Incidents ───────────────────────────────────────────────────────
+
+    def create_incident(
+        self, title: str, project: Optional[str] = None, severity: str = "p3",
+        status: str = "investigating", description: str = "",
+        root_cause: Optional[str] = None, resolution: Optional[str] = None,
+        timeline: Optional[list] = None, lead_id: Optional[str] = None,
+        started_at: Optional[str] = None, resolved_at: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        iid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO incidents (id,title,severity,status,description,root_cause,resolution,
+                timeline,project,lead_id,started_at,resolved_at,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (iid, title, severity, status, description, root_cause, resolution,
+             self.backend.encode_json(timeline or []), project, lead_id,
+             started_at or ts, resolved_at, self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM incidents WHERE id={p}", (iid,))
+
+    def update_incident(self, incident_id: str, **fields) -> Optional[dict]:
+        allowed = {"title", "severity", "status", "description", "root_cause", "resolution",
+                    "timeline", "project", "lead_id", "started_at", "resolved_at", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM incidents WHERE id={self._p}", (incident_id,))
+        if updates.get("status") in ("resolved", "postmortem") and "resolved_at" not in updates:
+            updates["resolved_at"] = now_iso()
+        for jf in ("timeline", "tags"):
+            if jf in updates and isinstance(updates[jf], list):
+                updates[jf] = self.backend.encode_json(updates[jf])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [incident_id]
+        self.backend.execute(f"UPDATE incidents SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM incidents WHERE id={p}", (incident_id,))
+
+    def get_incident(self, incident_id: str) -> Optional[dict]:
+        return self.backend.fetchone(f"SELECT * FROM incidents WHERE id={self._p}", (incident_id,))
+
+    def list_incidents(self, project: Optional[str] = None, severity: Optional[str] = None,
+                       status: Optional[str] = None, lead_id: Optional[str] = None,
+                       limit: int = 50) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM incidents WHERE 1=1", []
+        if project: q += f" AND project={p}"; params.append(project)
+        if severity: q += f" AND severity={p}"; params.append(severity)
+        if status: q += f" AND status={p}"; params.append(status)
+        if lead_id: q += f" AND lead_id={p}"; params.append(lead_id)
+        q += f" ORDER BY CASE severity WHEN 'p0' THEN 0 WHEN 'p1' THEN 1 WHEN 'p2' THEN 2 WHEN 'p3' THEN 3 ELSE 4 END, created_at DESC LIMIT {p}"
+        params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Dependencies ────────────────────────────────────────────────────
+
+    def create_dependency(
+        self, name: str, project: Optional[str] = None, version: str = "",
+        type: str = "library", source: Optional[str] = None,
+        license: Optional[str] = None, description: str = "",
+        pinned_version: Optional[str] = None, latest_version: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        did = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO dependencies (id,name,version,type,source,license,description,
+                project,pinned_version,latest_version,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (did, name, version, type, source, license, description, project,
+             pinned_version, latest_version, self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM dependencies WHERE id={p}", (did,))
+
+    def update_dependency(self, dependency_id: str, **fields) -> Optional[dict]:
+        allowed = {"name", "version", "type", "source", "license", "description",
+                    "project", "pinned_version", "latest_version", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM dependencies WHERE id={self._p}", (dependency_id,))
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [dependency_id]
+        self.backend.execute(f"UPDATE dependencies SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM dependencies WHERE id={p}", (dependency_id,))
+
+    def get_dependency(self, dependency_id: str) -> Optional[dict]:
+        return self.backend.fetchone(f"SELECT * FROM dependencies WHERE id={self._p}", (dependency_id,))
+
+    def list_dependencies(self, project: Optional[str] = None, type: Optional[str] = None,
+                          limit: int = 50) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM dependencies WHERE 1=1", []
+        if project: q += f" AND project={p}"; params.append(project)
+        if type: q += f" AND type={p}"; params.append(type)
+        q += f" ORDER BY name ASC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Runbooks ────────────────────────────────────────────────────────
+
+    def create_runbook(
+        self, title: str, project: Optional[str] = None, description: str = "",
+        steps: Optional[list] = None, trigger_conditions: Optional[str] = None,
+        last_executed: Optional[str] = None, tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        rid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO runbooks (id,title,description,steps,trigger_conditions,project,
+                last_executed,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (rid, title, description, self.backend.encode_json(steps or []),
+             trigger_conditions, project, last_executed,
+             self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM runbooks WHERE id={p}", (rid,))
+
+    def update_runbook(self, runbook_id: str, **fields) -> Optional[dict]:
+        allowed = {"title", "description", "steps", "trigger_conditions",
+                    "project", "last_executed", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM runbooks WHERE id={self._p}", (runbook_id,))
+        for jf in ("steps", "tags"):
+            if jf in updates and isinstance(updates[jf], list):
+                updates[jf] = self.backend.encode_json(updates[jf])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [runbook_id]
+        self.backend.execute(f"UPDATE runbooks SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM runbooks WHERE id={p}", (runbook_id,))
+
+    def get_runbook(self, runbook_id: str) -> Optional[dict]:
+        return self.backend.fetchone(f"SELECT * FROM runbooks WHERE id={self._p}", (runbook_id,))
+
+    def list_runbooks(self, project: Optional[str] = None, limit: int = 50) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM runbooks WHERE 1=1", []
+        if project: q += f" AND project={p}"; params.append(project)
+        q += f" ORDER BY title ASC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Decisions (ADRs) ────────────────────────────────────────────────
+
+    def create_decision(
+        self, title: str, project: Optional[str] = None, status: str = "proposed",
+        context: str = "", options: Optional[list] = None,
+        outcome: Optional[str] = None, consequences: Optional[str] = None,
+        branch: Optional[str] = None, session_id: Optional[str] = None,
+        author_id: Optional[str] = None, superseded_by: Optional[str] = None,
+        decided_at: Optional[str] = None, tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        did = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO decisions (id,title,status,context,options,outcome,consequences,
+                project,branch,session_id,author_id,superseded_by,decided_at,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (did, title, status, context, self.backend.encode_json(options or []),
+             outcome, consequences, project, branch, session_id, author_id,
+             superseded_by, decided_at, self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM decisions WHERE id={p}", (did,))
+
+    def update_decision(self, decision_id: str, **fields) -> Optional[dict]:
+        allowed = {"title", "status", "context", "options", "outcome", "consequences",
+                    "project", "branch", "session_id", "author_id", "superseded_by", "decided_at", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM decisions WHERE id={self._p}", (decision_id,))
+        if updates.get("status") == "accepted" and "decided_at" not in updates:
+            updates["decided_at"] = now_iso()
+        for jf in ("options", "tags"):
+            if jf in updates and isinstance(updates[jf], list):
+                updates[jf] = self.backend.encode_json(updates[jf])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [decision_id]
+        self.backend.execute(f"UPDATE decisions SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM decisions WHERE id={p}", (decision_id,))
+
+    def get_decision(self, decision_id: str) -> Optional[dict]:
+        return self.backend.fetchone(f"SELECT * FROM decisions WHERE id={self._p}", (decision_id,))
+
+    def list_decisions(self, project: Optional[str] = None, branch: Optional[str] = None,
+                       status: Optional[str] = None, limit: int = 50) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM decisions WHERE 1=1", []
+        if project: q += f" AND project={p}"; params.append(project)
+        if branch: q += f" AND branch={p}"; params.append(branch)
+        if status: q += f" AND status={p}"; params.append(status)
+        q += f" ORDER BY created_at DESC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Diagrams ────────────────────────────────────────────────────────
+
+    def create_diagram(
+        self, title: str, definition: str = "", diagram_type: str = "mermaid",
+        description: str = "", data_source: Optional[str] = None,
+        project: Optional[str] = None, branch: Optional[str] = None,
+        session_id: Optional[str] = None, tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        did = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO diagrams (id,title,diagram_type,definition,description,data_source,
+                project,branch,session_id,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (did, title, diagram_type, definition, description, data_source,
+             project, branch, session_id, self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM diagrams WHERE id={p}", (did,))
+
+    def update_diagram(self, diagram_id: str, **fields) -> Optional[dict]:
+        allowed = {"title", "diagram_type", "definition", "description", "data_source",
+                    "project", "branch", "session_id", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM diagrams WHERE id={self._p}", (diagram_id,))
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [diagram_id]
+        self.backend.execute(f"UPDATE diagrams SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM diagrams WHERE id={p}", (diagram_id,))
+
+    def get_diagram(self, diagram_id: str) -> Optional[dict]:
+        return self.backend.fetchone(f"SELECT * FROM diagrams WHERE id={self._p}", (diagram_id,))
+
+    def list_diagrams(self, project: Optional[str] = None, branch: Optional[str] = None,
+                      diagram_type: Optional[str] = None, limit: int = 50) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM diagrams WHERE 1=1", []
+        if project: q += f" AND project={p}"; params.append(project)
+        if branch: q += f" AND branch={p}"; params.append(branch)
+        if diagram_type: q += f" AND diagram_type={p}"; params.append(diagram_type)
+        q += f" ORDER BY updated_at DESC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    def delete_diagram(self, diagram_id: str) -> bool:
+        self.backend.execute(f"DELETE FROM diagrams WHERE id={self._p}", (diagram_id,))
+        return self.backend.last_rowcount > 0
+
+    # ── Comments ────────────────────────────────────────────────────────
+
+    def add_comment(
+        self, entity_id: str, entity_type: str, content: str,
+        author: str = "", parent_id: Optional[str] = None,
+        project: Optional[str] = None, tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        cid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO comments (id,entity_id,entity_type,author,content,parent_id,project,tags,created_at,updated_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (cid, entity_id, entity_type, author, content, parent_id, project,
+             self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM comments WHERE id={p}", (cid,))
+
+    def update_comment(self, comment_id: str, **fields) -> Optional[dict]:
+        allowed = {"content", "author", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM comments WHERE id={self._p}", (comment_id,))
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [comment_id]
+        self.backend.execute(f"UPDATE comments SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM comments WHERE id={p}", (comment_id,))
+
+    def get_comments(self, entity_id: str, entity_type: Optional[str] = None,
+                     project: Optional[str] = None, limit: int = 50) -> list[dict]:
+        p = self._p
+        q = f"SELECT * FROM comments WHERE entity_id={p}"
+        params: list[Any] = [entity_id]
+        if entity_type: q += f" AND entity_type={p}"; params.append(entity_type)
+        if project: q += f" AND project={p}"; params.append(project)
+        q += f" ORDER BY created_at ASC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    def delete_comment(self, comment_id: str) -> bool:
+        self.backend.execute(f"DELETE FROM comments WHERE id={self._p}", (comment_id,))
+        return self.backend.last_rowcount > 0
+
+    # ── Audit Log ───────────────────────────────────────────────────────
+
+    def log_audit(
+        self, entity_id: str, entity_type: str, action: str,
+        field_changed: Optional[str] = None, old_value: Optional[str] = None,
+        new_value: Optional[str] = None, actor: Optional[str] = None,
+        project: Optional[str] = None,
+    ) -> dict:
+        ts = now_iso()
+        aid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO audit_log (id,entity_id,entity_type,action,field_changed,
+                old_value,new_value,actor,project,created_at)
+                VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (aid, entity_id, entity_type, action, field_changed,
+             old_value, new_value, actor, project, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM audit_log WHERE id={p}", (aid,))
+
+    def get_audit_log(self, entity_id: Optional[str] = None, entity_type: Optional[str] = None,
+                      action: Optional[str] = None, actor: Optional[str] = None,
+                      project: Optional[str] = None, limit: int = 100) -> list[dict]:
+        p = self._p
+        q, params = "SELECT * FROM audit_log WHERE 1=1", []
+        if entity_id: q += f" AND entity_id={p}"; params.append(entity_id)
+        if entity_type: q += f" AND entity_type={p}"; params.append(entity_type)
+        if action: q += f" AND action={p}"; params.append(action)
+        if actor: q += f" AND actor={p}"; params.append(actor)
+        if project: q += f" AND project={p}"; params.append(project)
+        q += f" ORDER BY created_at DESC LIMIT {p}"; params.append(limit)
+        return self.backend.fetchall(q, params)
+
     # ── Scoring (shared logic) ──────────────────────────────────────────
+
+    # ── Tickets ─────────────────────────────────────────────────────────
+
+    def _next_ticket_number(self, project: Optional[str] = None) -> str:
+        """Generate the next ticket number like MG-1, MG-2 or PROJ-1."""
+        prefix = (project or "MG").upper()[:10]
+        p = self._p
+        row = self.backend.fetchone(
+            f"SELECT COUNT(*) as cnt FROM tickets WHERE COALESCE(project,'')={p}",
+            (project or '',),
+        )
+        num = (row["cnt"] if row else 0) + 1
+        return f"{prefix}-{num}"
+
+    def create_ticket(
+        self, title: str, description: str = "",
+        status: str = "open", priority: str = "medium",
+        type: str = "task", ticket_number: Optional[str] = None,
+        assignee_id: Optional[str] = None, reporter_id: Optional[str] = None,
+        project: Optional[str] = None, branch: Optional[str] = None,
+        session_id: Optional[str] = None, parent_id: Optional[str] = None,
+        tags: Optional[list[str]] = None, due_date: Optional[str] = None,
+    ) -> dict:
+        ts = now_iso()
+        tid = new_id()
+        p = self._p
+        if not ticket_number:
+            ticket_number = self._next_ticket_number(project)
+        self.backend.execute(
+            f"""INSERT INTO tickets
+               (id, ticket_number, title, description, status, priority, type,
+                assignee_id, reporter_id, project, branch, session_id, parent_id,
+                tags, due_date, created_at, updated_at)
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (tid, ticket_number, title, description, status, priority, type,
+             assignee_id, reporter_id, project, branch, session_id, parent_id,
+             self.backend.encode_json(tags or []), due_date, ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM tickets WHERE id={p}", (tid,))
+
+    def update_ticket(self, ticket_id: str, **fields) -> Optional[dict]:
+        allowed = {"title", "description", "status", "priority", "type",
+                    "assignee_id", "reporter_id", "project", "branch",
+                    "session_id", "parent_id", "tags", "due_date"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM tickets WHERE id={self._p}", (ticket_id,))
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        # Auto-set resolved_at when status moves to resolved/closed
+        if updates.get("status") in ("resolved", "closed"):
+            updates["resolved_at"] = now_iso()
+        elif updates.get("status") in ("open", "in_progress", "review"):
+            updates["resolved_at"] = None
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [ticket_id]
+        self.backend.execute(f"UPDATE tickets SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM tickets WHERE id={p}", (ticket_id,))
+
+    def get_ticket(self, ticket_id: Optional[str] = None, ticket_number: Optional[str] = None) -> Optional[dict]:
+        p = self._p
+        if ticket_number:
+            ticket = self.backend.fetchone(f"SELECT * FROM tickets WHERE ticket_number={p}", (ticket_number.upper(),))
+        elif ticket_id:
+            ticket = self.backend.fetchone(f"SELECT * FROM tickets WHERE id={p}", (ticket_id,))
+        else:
+            return None
+        if ticket:
+            # Include sub-tickets
+            ticket["sub_tickets"] = self.backend.fetchall(
+                f"SELECT id, ticket_number, title, status, priority, type, assignee_id FROM tickets WHERE parent_id={p} ORDER BY created_at",
+                (ticket["id"],),
+            )
+            # Include attachments
+            ticket["attachments"] = self.backend.fetchall(
+                f"SELECT * FROM attachments WHERE entity_id={p} AND entity_type='ticket' ORDER BY position",
+                (ticket["id"],),
+            )
+        return ticket
+
+    def list_tickets(
+        self, project: Optional[str] = None, branch: Optional[str] = None,
+        status: Optional[str] = None, assignee_id: Optional[str] = None,
+        type: Optional[str] = None, parent_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        p = self._p
+        q = "SELECT * FROM tickets WHERE 1=1"
+        params: list[Any] = []
+        if project:
+            q += f" AND project={p}"
+            params.append(project)
+        if branch:
+            q += f" AND branch={p}"
+            params.append(branch)
+        if status:
+            q += f" AND status={p}"
+            params.append(status)
+        if assignee_id:
+            q += f" AND assignee_id={p}"
+            params.append(assignee_id)
+        if type:
+            q += f" AND type={p}"
+            params.append(type)
+        if parent_id:
+            q += f" AND parent_id={p}"
+            params.append(parent_id)
+        q += f" ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, updated_at DESC LIMIT {p}"
+        params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Instructions ──────────────────────────────────────────────────
+
+    def create_instruction(
+        self, section: str, title: str, content: str = "",
+        position: Optional[int] = None, priority: str = "medium",
+        scope: str = "global",
+        project: Optional[str] = None, branch: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        iid = new_id()
+        p = self._p
+        if position is None:
+            row = self.backend.fetchone(
+                f"SELECT COALESCE(MAX(position), -1) + 1 as next_pos FROM instructions WHERE scope={p} AND COALESCE(project,'')={p} AND COALESCE(branch,'')={p}",
+                (scope, project or '', branch or ''),
+            )
+            position = row["next_pos"] if row else 0
+        self.backend.execute(
+            f"""INSERT INTO instructions
+               (id, section, title, content, position, priority, scope, project, branch, active, tags, created_at, updated_at)
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (iid, section, title, content, position, priority, scope, project, branch, 1,
+             self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM instructions WHERE id={p}", (iid,))
+
+    def update_instruction(self, instruction_id: str, **fields) -> Optional[dict]:
+        allowed = {"title", "content", "section", "position", "priority", "scope",
+                    "project", "branch", "active", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM instructions WHERE id={self._p}", (instruction_id,))
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        if "active" in updates and isinstance(updates["active"], bool):
+            updates["active"] = 1 if updates["active"] else 0
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [instruction_id]
+        self.backend.execute(f"UPDATE instructions SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM instructions WHERE id={p}", (instruction_id,))
+
+    def get_instructions(
+        self, project: Optional[str] = None, branch: Optional[str] = None,
+        section: Optional[str] = None, include_global: bool = True,
+    ) -> list[dict]:
+        p = self._p
+        q = "SELECT * FROM instructions WHERE active = 1"
+        params: list[Any] = []
+        if section:
+            q += f" AND section={p}"
+            params.append(section)
+        # Scope filtering: include global + project-scoped + branch-scoped
+        scope_clauses = []
+        if include_global:
+            scope_clauses.append("scope='global'")
+        if project:
+            scope_clauses.append(f"(scope='project' AND project={p})")
+            params.append(project)
+            if branch:
+                scope_clauses.append(f"(scope='branch' AND project={p} AND branch={p})")
+                params.append(project)
+                params.append(branch)
+        if scope_clauses:
+            q += f" AND ({' OR '.join(scope_clauses)})"
+        q += " ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, position ASC, created_at ASC"
+        return self.backend.fetchall(q, params)
+
+    def list_instruction_sections(
+        self, project: Optional[str] = None, branch: Optional[str] = None,
+    ) -> list[dict]:
+        p = self._p
+        q = "SELECT id, section, title, scope, project, branch, position, active FROM instructions WHERE 1=1"
+        params: list[Any] = []
+        scope_clauses = ["scope='global'"]
+        if project:
+            scope_clauses.append(f"(scope='project' AND project={p})")
+            params.append(project)
+            if branch:
+                scope_clauses.append(f"(scope='branch' AND project={p} AND branch={p})")
+                params.append(project)
+                params.append(branch)
+        q += f" AND ({' OR '.join(scope_clauses)})"
+        q += " ORDER BY position ASC"
+        return self.backend.fetchall(q, params)
+
+    # ── Attachments ─────────────────────────────────────────────────────
+
+    def add_attachment(
+        self, entity_id: str, entity_type: str, url: str,
+        label: str = "", type: str = "link",
+        mime_type: Optional[str] = None, description: str = "",
+        position: Optional[int] = None,
+    ) -> dict:
+        ts = now_iso()
+        aid = new_id()
+        p = self._p
+        if position is None:
+            row = self.backend.fetchone(
+                f"SELECT COALESCE(MAX(position), -1) + 1 as next_pos FROM attachments WHERE entity_id={p} AND entity_type={p}",
+                (entity_id, entity_type),
+            )
+            position = row["next_pos"] if row else 0
+        self.backend.execute(
+            f"""INSERT INTO attachments
+               (id, entity_id, entity_type, url, label, type, mime_type, description, position, created_at)
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (aid, entity_id, entity_type, url, label, type, mime_type, description, position, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM attachments WHERE id={p}", (aid,))
+
+    def remove_attachment(self, attachment_id: str) -> bool:
+        p = self._p
+        self.backend.execute(f"DELETE FROM attachments WHERE id={p}", (attachment_id,))
+        return self.backend.last_rowcount > 0
+
+    def get_attachments(
+        self, entity_id: str, entity_type: Optional[str] = None,
+        type_filter: Optional[str] = None,
+    ) -> list[dict]:
+        p = self._p
+        q = f"SELECT * FROM attachments WHERE entity_id={p}"
+        params: list[Any] = [entity_id]
+        if entity_type:
+            q += f" AND entity_type={p}"
+            params.append(entity_type)
+        if type_filter:
+            q += f" AND type={p}"
+            params.append(type_filter)
+        q += " ORDER BY position ASC, created_at ASC"
+        return self.backend.fetchall(q, params)
+
+    def update_attachment(self, attachment_id: str, **fields) -> Optional[dict]:
+        allowed = {"url", "label", "type", "mime_type", "description", "position"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM attachments WHERE id={self._p}", (attachment_id,))
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [attachment_id]
+        self.backend.execute(f"UPDATE attachments SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM attachments WHERE id={p}", (attachment_id,))
 
     @staticmethod
     def _compute_score(item: dict, fts_rank: float) -> float:

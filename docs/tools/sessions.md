@@ -4,7 +4,9 @@ Four tools for managing the session lifecycle: start, snapshot, resume, and end.
 
 ## `start_session`
 
-Begin a new memgram session. Call this at the beginning of every conversation. Returns the session ID plus resume context (last session summary, pinned items, active rules).
+Begin a new memgram session. Call this **first** at the beginning of every conversation. Returns the session ID plus resume context (last session summary, pinned items, active rules).
+
+**Important:** Save the returned `session.id` and pass it as `session_id` to **all** subsequent `add_thought`, `add_rule`, and `add_error_pattern` calls. Without it, items lose agent attribution and session linkage.
 
 ### Parameters
 
@@ -12,7 +14,7 @@ Begin a new memgram session. Call this at the beginning of every conversation. R
 |------|------|----------|---------|-------------|
 | `agent_type` | string | **yes** | — | AI agent type: `copilot`, `claude`, `cursor`, etc. |
 | `model` | string | **yes** | — | Model name: `gpt-4`, `claude-sonnet`, etc. |
-| `project` | string | no | `null` | Project tag for scoped context |
+| `project` | string | **yes** | — | Project tag for scoped context |
 | `branch` | string | no | `null` | Git branch name for branch-scoped context |
 | `goal` | string | no | `null` | What this session aims to accomplish |
 

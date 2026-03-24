@@ -1,6 +1,6 @@
 # Maintenance & Health Tools
 
-Three tools for managing item lifecycle and checking database health.
+Four tools for managing item lifecycle, checking database health, and viewing agent contribution statistics.
 
 ## `pin_item`
 
@@ -64,4 +64,66 @@ Report database health: connectivity, WAL mode, foreign key status, vector avail
   },
   "warnings": []
 }
+```
+
+## `get_agent_stats`
+
+Get contribution statistics broken down by AI agent type and model. Shows how many sessions, thoughts, rules, and error patterns each agent (Claude, Copilot, Codex, Cursor, etc.) has created.
+
+### Parameters
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `project` | string | no | — | Filter stats to a specific project (omit for global stats) |
+
+### Example Response
+
+```json
+{
+  "agents": [
+    {
+      "agent_type": "claude",
+      "agent_model": "claude-sonnet-4",
+      "sessions": 15,
+      "thoughts": 42,
+      "rules": 8,
+      "errors": 3,
+      "first_seen": "2025-01-15T10:30:00+00:00",
+      "last_seen": "2025-03-16T14:22:00+00:00"
+    },
+    {
+      "agent_type": "copilot",
+      "agent_model": "gpt-4",
+      "sessions": 7,
+      "thoughts": 18,
+      "rules": 2,
+      "errors": 1,
+      "first_seen": "2025-02-01T08:00:00+00:00",
+      "last_seen": "2025-03-10T16:45:00+00:00"
+    }
+  ],
+  "totals": {
+    "total_agents": 2,
+    "total_sessions": 22,
+    "total_thoughts": 60,
+    "total_rules": 10,
+    "total_errors": 4
+  },
+  "project": null
+}
+```
+
+### Agent Attribution
+
+Every thought, rule, and error pattern now records which agent created it via `agent_type` and `agent_model` columns. These are:
+
+- **Auto-resolved from the session** when a `session_id` is provided (the session's `agent_type` and `model` are copied to the item)
+- **Explicitly provided** via `agent_type` and `agent_model` parameters on `add_thought`, `add_rule`, and `add_error_pattern`
+- **Backfilled on upgrade** — existing items with a `session_id` are backfilled from their session's agent info during migration
+
+### CLI
+
+```bash
+memgram agent-stats                    # Global stats
+memgram agent-stats --project myapp    # Project-specific stats
 ```

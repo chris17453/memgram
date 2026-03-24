@@ -2,6 +2,8 @@
 
 Six tools for storing and connecting knowledge: thoughts, rules, error patterns, and links.
 
+**Agent attribution:** Every thought, rule, and error pattern records which agent created it (`agent_type` and `agent_model`). These are auto-resolved from the session when `session_id` is provided. Always pass your session ID to `add_thought`, `add_rule`, and `add_error_pattern`.
+
 ## `add_thought`
 
 Store a thought, observation, decision, idea, or note. Use this to record anything worth remembering across sessions.
@@ -14,7 +16,7 @@ Store a thought, observation, decision, idea, or note. Use this to record anythi
 | `content` | string | no | `""` | Full detailed content |
 | `type` | string | no | `"note"` | One of: `observation`, `decision`, `idea`, `error`, `pattern`, `note` |
 | `session_id` | string | no | `null` | Current session ID |
-| `project` | string | no | `null` | Project tag |
+| `project` | string | **yes** | — | Project tag |
 | `branch` | string | no | `null` | Git branch name |
 | `keywords` | string[] | no | `[]` | Keywords for search |
 | `associated_files` | string[] | no | `[]` | Related file paths |
@@ -83,7 +85,7 @@ Store a learned rule — something to always do, never do, or do in specific con
 | `severity` | string | **yes** | — | `critical`, `preference`, or `context_dependent` |
 | `condition` | string | no | `null` | When does this rule apply? |
 | `session_id` | string | no | `null` | Current session ID |
-| `project` | string | no | `null` | Project tag (`null` = global rule) |
+| `project` | string | **yes** | — | Project tag |
 | `branch` | string | no | `null` | Git branch (`null` = applies to all branches) |
 | `keywords` | string[] | no | `[]` | Keywords for retrieval |
 | `associated_files` | string[] | no | `[]` | Related files |
@@ -150,7 +152,7 @@ Log a failure pattern: what went wrong, why, how it was fixed. Optionally link t
 | `fix` | string | no | `null` | How it was fixed |
 | `prevention_rule_id` | string | no | `null` | ID of rule to prevent recurrence |
 | `session_id` | string | no | `null` | Current session ID |
-| `project` | string | no | `null` | Project tag |
+| `project` | string | **yes** | — | Project tag |
 | `branch` | string | no | `null` | Git branch name |
 | `keywords` | string[] | no | `[]` | Keywords |
 | `associated_files` | string[] | no | `[]` | Related files |

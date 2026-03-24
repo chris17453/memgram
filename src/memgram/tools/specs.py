@@ -37,7 +37,7 @@ TOOLS = [
                 "author_id": {"type": "string", "description": "Person ID of the spec author"},
                 "tags": {"type": "array", "items": {"type": "string"}},
             },
-            "required": ["title"],
+            "required": ["title", "project"],
         },
     ),
     Tool(

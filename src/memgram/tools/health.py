@@ -1,4 +1,4 @@
-"""Health and diagnostics tools."""
+"""Health, diagnostics, and reporting tools."""
 
 from __future__ import annotations
 
@@ -21,6 +21,24 @@ TOOLS = [
                     "type": "boolean",
                     "default": True,
                     "description": "Include per-table row counts in the response.",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="get_agent_stats",
+        description=(
+            "Get contribution statistics broken down by AI agent type and model. "
+            "Shows how many sessions, thoughts, rules, and error patterns each agent "
+            "(Claude, Copilot, Codex, Cursor, etc.) has created, with first/last seen dates. "
+            "Useful for understanding which agents are contributing what to the knowledge base."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Filter stats to a specific project (optional, omit for global stats)",
                 },
             },
         },

@@ -32,6 +32,8 @@ Full column-level schema for all memgram tables.
 | `content` | TEXT | NOT NULL | `''` | Full content |
 | `project` | TEXT | yes | `NULL` | Project tag (normalized) |
 | `branch` | TEXT | yes | `NULL` | Branch name (normalized) |
+| `agent_type` | TEXT | yes | `NULL` | AI agent type (auto-resolved from session) |
+| `agent_model` | TEXT | yes | `NULL` | Model identifier (auto-resolved from session) |
 | `keywords` | TEXT | NOT NULL | `'[]'` | JSON array of strings |
 | `associated_files` | TEXT | NOT NULL | `'[]'` | JSON array of file paths |
 | `pinned` | INTEGER | NOT NULL | `0` | 1 = pinned |
@@ -41,7 +43,7 @@ Full column-level schema for all memgram tables.
 | `updated_at` | TEXT | NOT NULL | — | ISO 8601 UTC |
 | `last_accessed` | TEXT | NOT NULL | — | ISO 8601 UTC |
 
-**Indexes:** `project`, `branch`, `session_id`, `pinned` (partial), `(project, branch)`
+**Indexes:** `project`, `branch`, `session_id`, `pinned` (partial), `(project, branch)`, `(agent_type, agent_model)`
 
 ## `rules`
 
@@ -56,6 +58,8 @@ Full column-level schema for all memgram tables.
 | `condition` | TEXT | yes | `NULL` | When the rule applies |
 | `project` | TEXT | yes | `NULL` | Project tag (normalized) |
 | `branch` | TEXT | yes | `NULL` | Branch name (normalized) |
+| `agent_type` | TEXT | yes | `NULL` | AI agent type (auto-resolved from session) |
+| `agent_model` | TEXT | yes | `NULL` | Model identifier (auto-resolved from session) |
 | `keywords` | TEXT | NOT NULL | `'[]'` | JSON array |
 | `associated_files` | TEXT | NOT NULL | `'[]'` | JSON array |
 | `pinned` | INTEGER | NOT NULL | `0` | 1 = pinned |
@@ -65,7 +69,7 @@ Full column-level schema for all memgram tables.
 | `updated_at` | TEXT | NOT NULL | — | ISO 8601 UTC |
 | `last_accessed` | TEXT | NOT NULL | — | ISO 8601 UTC |
 
-**Indexes:** `project`, `branch`, `session_id`, `severity`, `pinned` (partial), `(project, branch)`
+**Indexes:** `project`, `branch`, `session_id`, `severity`, `pinned` (partial), `(project, branch)`, `(agent_type, agent_model)`
 
 ## `compaction_snapshots`
 
@@ -111,11 +115,13 @@ Full column-level schema for all memgram tables.
 | `prevention_rule_id` | TEXT | yes | `NULL` | FK -> rules(id) |
 | `project` | TEXT | yes | `NULL` | Project tag (normalized) |
 | `branch` | TEXT | yes | `NULL` | Branch name (normalized) |
+| `agent_type` | TEXT | yes | `NULL` | AI agent type (auto-resolved from session) |
+| `agent_model` | TEXT | yes | `NULL` | Model identifier (auto-resolved from session) |
 | `keywords` | TEXT | NOT NULL | `'[]'` | JSON array |
 | `associated_files` | TEXT | NOT NULL | `'[]'` | JSON array |
 | `created_at` | TEXT | NOT NULL | — | ISO 8601 UTC |
 
-**Indexes:** `project`, `branch`
+**Indexes:** `project`, `branch`, `(agent_type, agent_model)`
 
 ## `project_summaries`
 

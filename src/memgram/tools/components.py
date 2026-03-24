@@ -31,7 +31,7 @@ TOOLS = [
                 },
                 "tags": {"type": "array", "items": {"type": "string"}},
             },
-            "required": ["name"],
+            "required": ["name", "project"],
         },
     ),
     Tool(
