@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS thoughts (
     content TEXT NOT NULL DEFAULT '',
     project TEXT,
     branch TEXT,
+    agent_type TEXT,
+    agent_model TEXT,
     keywords TEXT NOT NULL DEFAULT '[]',
     associated_files TEXT NOT NULL DEFAULT '[]',
     pinned INTEGER NOT NULL DEFAULT 0,
@@ -60,6 +62,8 @@ CREATE TABLE IF NOT EXISTS rules (
     condition TEXT,
     project TEXT,
     branch TEXT,
+    agent_type TEXT,
+    agent_model TEXT,
     keywords TEXT NOT NULL DEFAULT '[]',
     associated_files TEXT NOT NULL DEFAULT '[]',
     pinned INTEGER NOT NULL DEFAULT 0,
@@ -103,6 +107,8 @@ CREATE TABLE IF NOT EXISTS error_patterns (
     prevention_rule_id TEXT REFERENCES rules(id),
     project TEXT,
     branch TEXT,
+    agent_type TEXT,
+    agent_model TEXT,
     keywords TEXT NOT NULL DEFAULT '[]',
     associated_files TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL
@@ -165,6 +171,116 @@ CREATE TABLE IF NOT EXISTS embedding_meta (
     branch TEXT,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS specs (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft',
+    priority TEXT NOT NULL DEFAULT 'medium',
+    acceptance_criteria TEXT NOT NULL DEFAULT '[]',
+    project TEXT,
+    branch TEXT,
+    session_id TEXT REFERENCES sessions(id),
+    author_id TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS features (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'proposed',
+    priority TEXT NOT NULL DEFAULT 'medium',
+    spec_id TEXT REFERENCES specs(id),
+    project TEXT,
+    branch TEXT,
+    session_id TEXT REFERENCES sessions(id),
+    lead_id TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS components (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    type TEXT NOT NULL DEFAULT 'module',
+    project TEXT,
+    branch TEXT,
+    owner_id TEXT,
+    tech_stack TEXT NOT NULL DEFAULT '[]',
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS people (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'individual',
+    role TEXT NOT NULL DEFAULT '',
+    email TEXT,
+    github TEXT,
+    skills TEXT NOT NULL DEFAULT '[]',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS teams (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    project TEXT,
+    lead_id TEXT REFERENCES people(id),
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_members (
+    team_id TEXT NOT NULL REFERENCES teams(id),
+    person_id TEXT NOT NULL REFERENCES people(id),
+    role TEXT NOT NULL DEFAULT 'member',
+    joined_at TEXT NOT NULL,
+    PRIMARY KEY (team_id, person_id)
+);
+
+CREATE TABLE IF NOT EXISTS plans (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    scope TEXT NOT NULL DEFAULT 'project',
+    status TEXT NOT NULL DEFAULT 'draft',
+    priority TEXT NOT NULL DEFAULT 'medium',
+    session_id TEXT REFERENCES sessions(id),
+    project TEXT,
+    branch TEXT,
+    due_date TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    total_tasks INTEGER NOT NULL DEFAULT 0,
+    completed_tasks INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS plan_tasks (
+    id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL REFERENCES plans(id),
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    position INTEGER NOT NULL DEFAULT 0,
+    assignee TEXT,
+    depends_on TEXT REFERENCES plan_tasks(id),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT
+);
 """
 
 FTS_SCHEMA = """
@@ -183,6 +299,22 @@ CREATE VIRTUAL TABLE IF NOT EXISTS error_patterns_fts USING fts5(
 CREATE VIRTUAL TABLE IF NOT EXISTS session_summaries_fts USING fts5(
     id UNINDEXED, goal, outcome, next_session_hints,
     content='session_summaries', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS plans_fts USING fts5(
+    id UNINDEXED, title, description, tags,
+    content='plans', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS specs_fts USING fts5(
+    id UNINDEXED, title, description, tags,
+    content='specs', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS features_fts USING fts5(
+    id UNINDEXED, name, description, tags,
+    content='features', content_rowid='rowid'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS components_fts USING fts5(
+    id UNINDEXED, name, description, tags,
+    content='components', content_rowid='rowid'
 );
 """
 
@@ -246,6 +378,66 @@ CREATE TRIGGER IF NOT EXISTS session_summaries_au AFTER UPDATE ON session_summar
     INSERT INTO session_summaries_fts(rowid, id, goal, outcome, next_session_hints)
     VALUES (new.rowid, new.id, new.goal, new.outcome, new.next_session_hints);
 END;
+
+CREATE TRIGGER IF NOT EXISTS plans_ai AFTER INSERT ON plans BEGIN
+    INSERT INTO plans_fts(rowid, id, title, description, tags)
+    VALUES (new.rowid, new.id, new.title, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS plans_ad AFTER DELETE ON plans BEGIN
+    INSERT INTO plans_fts(plans_fts, rowid, id, title, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS plans_au AFTER UPDATE ON plans BEGIN
+    INSERT INTO plans_fts(plans_fts, rowid, id, title, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.description, old.tags);
+    INSERT INTO plans_fts(rowid, id, title, description, tags)
+    VALUES (new.rowid, new.id, new.title, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS specs_ai AFTER INSERT ON specs BEGIN
+    INSERT INTO specs_fts(rowid, id, title, description, tags)
+    VALUES (new.rowid, new.id, new.title, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS specs_ad AFTER DELETE ON specs BEGIN
+    INSERT INTO specs_fts(specs_fts, rowid, id, title, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS specs_au AFTER UPDATE ON specs BEGIN
+    INSERT INTO specs_fts(specs_fts, rowid, id, title, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.title, old.description, old.tags);
+    INSERT INTO specs_fts(rowid, id, title, description, tags)
+    VALUES (new.rowid, new.id, new.title, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS features_ai AFTER INSERT ON features BEGIN
+    INSERT INTO features_fts(rowid, id, name, description, tags)
+    VALUES (new.rowid, new.id, new.name, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS features_ad AFTER DELETE ON features BEGIN
+    INSERT INTO features_fts(features_fts, rowid, id, name, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS features_au AFTER UPDATE ON features BEGIN
+    INSERT INTO features_fts(features_fts, rowid, id, name, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.description, old.tags);
+    INSERT INTO features_fts(rowid, id, name, description, tags)
+    VALUES (new.rowid, new.id, new.name, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS components_ai AFTER INSERT ON components BEGIN
+    INSERT INTO components_fts(rowid, id, name, description, tags)
+    VALUES (new.rowid, new.id, new.name, new.description, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS components_ad AFTER DELETE ON components BEGIN
+    INSERT INTO components_fts(components_fts, rowid, id, name, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.description, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS components_au AFTER UPDATE ON components BEGIN
+    INSERT INTO components_fts(components_fts, rowid, id, name, description, tags)
+    VALUES ('delete', old.rowid, old.id, old.name, old.description, old.tags);
+    INSERT INTO components_fts(rowid, id, name, description, tags)
+    VALUES (new.rowid, new.id, new.name, new.description, new.tags);
+END;
 """
 
 INDEXES = """
@@ -274,6 +466,38 @@ CREATE INDEX IF NOT EXISTS idx_embedding_meta_branch ON embedding_meta(branch);
 CREATE INDEX IF NOT EXISTS idx_thoughts_project_branch ON thoughts(project, branch);
 CREATE INDEX IF NOT EXISTS idx_rules_project_branch ON rules(project, branch);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_branch ON sessions(project, branch);
+CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_type, model);
+CREATE INDEX IF NOT EXISTS idx_thoughts_agent ON thoughts(agent_type, agent_model);
+CREATE INDEX IF NOT EXISTS idx_rules_agent ON rules(agent_type, agent_model);
+CREATE INDEX IF NOT EXISTS idx_error_patterns_agent ON error_patterns(agent_type, agent_model);
+CREATE INDEX IF NOT EXISTS idx_plans_project ON plans(project);
+CREATE INDEX IF NOT EXISTS idx_plans_branch ON plans(branch);
+CREATE INDEX IF NOT EXISTS idx_plans_project_branch ON plans(project, branch);
+CREATE INDEX IF NOT EXISTS idx_plans_session ON plans(session_id);
+CREATE INDEX IF NOT EXISTS idx_plans_status ON plans(status);
+CREATE INDEX IF NOT EXISTS idx_plan_tasks_plan ON plan_tasks(plan_id);
+CREATE INDEX IF NOT EXISTS idx_plan_tasks_status ON plan_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_plan_tasks_depends ON plan_tasks(depends_on);
+CREATE INDEX IF NOT EXISTS idx_specs_project ON specs(project);
+CREATE INDEX IF NOT EXISTS idx_specs_branch ON specs(branch);
+CREATE INDEX IF NOT EXISTS idx_specs_project_branch ON specs(project, branch);
+CREATE INDEX IF NOT EXISTS idx_specs_status ON specs(status);
+CREATE INDEX IF NOT EXISTS idx_specs_author ON specs(author_id);
+CREATE INDEX IF NOT EXISTS idx_features_project ON features(project);
+CREATE INDEX IF NOT EXISTS idx_features_branch ON features(branch);
+CREATE INDEX IF NOT EXISTS idx_features_project_branch ON features(project, branch);
+CREATE INDEX IF NOT EXISTS idx_features_status ON features(status);
+CREATE INDEX IF NOT EXISTS idx_features_spec ON features(spec_id);
+CREATE INDEX IF NOT EXISTS idx_features_lead ON features(lead_id);
+CREATE INDEX IF NOT EXISTS idx_components_project ON components(project);
+CREATE INDEX IF NOT EXISTS idx_components_branch ON components(branch);
+CREATE INDEX IF NOT EXISTS idx_components_project_branch ON components(project, branch);
+CREATE INDEX IF NOT EXISTS idx_components_owner ON components(owner_id);
+CREATE INDEX IF NOT EXISTS idx_components_type ON components(type);
+CREATE INDEX IF NOT EXISTS idx_people_type ON people(type);
+CREATE INDEX IF NOT EXISTS idx_teams_project ON teams(project);
+CREATE INDEX IF NOT EXISTS idx_teams_lead ON teams(lead_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_person ON team_members(person_id);
 """
 
 
@@ -319,8 +543,11 @@ class SQLiteBackend(DatabaseBackend):
         assert self.conn is not None
         self.conn.executescript(CORE_SCHEMA)
         self._migrate_add_branch()  # must run before INDEXES (adds branch column)
+        self._migrate_add_agent_attribution()  # adds agent_type/agent_model columns
+        self._migrate_add_person_type()  # adds type column to people
         self.conn.executescript(FTS_SCHEMA)
         self.conn.executescript(FTS_TRIGGERS)
+        self._rebuild_fts()  # ensure FTS indexes are synced with existing data
         self.conn.executescript(INDEXES)
         # sqlite-vec virtual table for vector search
         if self.vec_enabled:
@@ -342,6 +569,60 @@ class SQLiteBackend(DatabaseBackend):
                 self.conn.execute(f"ALTER TABLE {table} ADD COLUMN branch TEXT")
             except sqlite3.OperationalError:
                 pass  # column already exists
+        self.conn.commit()
+
+    def _migrate_add_agent_attribution(self) -> None:
+        """Add agent_type and agent_model columns to content tables (idempotent).
+
+        Also backfills existing rows from their linked session where possible.
+        """
+        assert self.conn is not None
+        tables = ["thoughts", "rules", "error_patterns"]
+        added_any = False
+        for table in tables:
+            for col in ("agent_type", "agent_model"):
+                try:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} TEXT")
+                    added_any = True
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+        # Backfill from sessions for rows that have a session_id but no agent info
+        if added_any:
+            for table in tables:
+                self.conn.execute(f"""
+                    UPDATE {table} SET
+                        agent_type = (SELECT s.agent_type FROM sessions s WHERE s.id = {table}.session_id),
+                        agent_model = (SELECT s.model FROM sessions s WHERE s.id = {table}.session_id)
+                    WHERE session_id IS NOT NULL AND agent_type IS NULL
+                """)
+        self.conn.commit()
+
+    def _rebuild_fts(self) -> None:
+        """Rebuild FTS indexes so they stay in sync with content tables.
+
+        This is idempotent and fast on small/empty tables. On upgrade from an
+        older schema, existing rows won't be in the FTS index until rebuild.
+        """
+        assert self.conn is not None
+        fts_tables = [
+            "thoughts_fts", "rules_fts", "error_patterns_fts",
+            "session_summaries_fts", "plans_fts",
+            "specs_fts", "features_fts", "components_fts",
+        ]
+        for fts in fts_tables:
+            try:
+                self.conn.execute(f"INSERT INTO {fts}({fts}) VALUES('rebuild')")
+            except Exception:
+                pass  # table may not exist yet on first run
+        self.conn.commit()
+
+    def _migrate_add_person_type(self) -> None:
+        """Add type column to people table (idempotent)."""
+        assert self.conn is not None
+        try:
+            self.conn.execute("ALTER TABLE people ADD COLUMN type TEXT NOT NULL DEFAULT 'individual'")
+        except sqlite3.OperationalError:
+            pass  # column already exists or table doesn't exist yet
         self.conn.commit()
 
     # ── Primitives ──────────────────────────────────────────────────────
@@ -583,6 +864,8 @@ class SQLiteBackend(DatabaseBackend):
             "sessions", "thoughts", "rules", "error_patterns",
             "session_summaries", "compaction_snapshots", "project_summaries",
             "thought_groups", "group_members", "embedding_meta",
+            "plans", "plan_tasks",
+            "specs", "features", "components", "people", "teams", "team_members",
         ]
         counts: dict[str, Any] = {}
         for tbl in tables:
@@ -609,7 +892,10 @@ class SQLiteBackend(DatabaseBackend):
                 info["warnings"].append(f"embeddings_vec check failed: {exc}")
         info["vec"] = vec_info
 
-        fts_tables = ["thoughts_fts", "rules_fts", "error_patterns_fts", "session_summaries_fts"]
+        fts_tables = [
+            "thoughts_fts", "rules_fts", "error_patterns_fts", "session_summaries_fts",
+            "plans_fts", "specs_fts", "features_fts", "components_fts",
+        ]
         fts_status: dict[str, str] = {}
         for tbl in fts_tables:
             try:

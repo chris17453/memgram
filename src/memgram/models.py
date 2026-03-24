@@ -31,6 +31,8 @@ class Thought:
     content: str = ""
     project: Optional[str] = None
     branch: Optional[str] = None
+    agent_type: Optional[str] = None  # AI agent: copilot, claude, codex, etc.
+    agent_model: Optional[str] = None  # Model: gpt-4, claude-sonnet, etc.
     keywords: str = "[]"  # JSON array
     associated_files: str = "[]"  # JSON array
     pinned: int = 0
@@ -52,6 +54,8 @@ class Rule:
     condition: Optional[str] = None
     project: Optional[str] = None
     branch: Optional[str] = None
+    agent_type: Optional[str] = None  # AI agent: copilot, claude, codex, etc.
+    agent_model: Optional[str] = None  # Model: gpt-4, claude-sonnet, etc.
     keywords: str = "[]"
     associated_files: str = "[]"
     pinned: int = 0
@@ -81,10 +85,10 @@ class CompactionSnapshot:
 class ThoughtLink:
     id: str
     from_id: str
-    from_type: str  # thought, rule
+    from_type: str  # thought, rule, error_pattern, spec, feature, component, plan, person
     to_id: str
-    to_type: str  # thought, rule
-    link_type: str = "related"  # informs, contradicts, supersedes, related, caused_by
+    to_type: str  # thought, rule, error_pattern, spec, feature, component, plan, person
+    link_type: str = "related"  # informs, contradicts, supersedes, related, caused_by, implements, owns, depends_on, authored_by
     created_at: Optional[str] = None
 
 
@@ -98,6 +102,8 @@ class ErrorPattern:
     prevention_rule_id: Optional[str] = None
     project: Optional[str] = None
     branch: Optional[str] = None
+    agent_type: Optional[str] = None  # AI agent: copilot, claude, codex, etc.
+    agent_model: Optional[str] = None  # Model: gpt-4, claude-sonnet, etc.
     keywords: str = "[]"
     associated_files: str = "[]"
     created_at: Optional[str] = None
@@ -152,3 +158,120 @@ class GroupMember:
     item_id: str
     item_type: str  # thought, rule, error_pattern
     added_at: Optional[str] = None
+
+
+@dataclass
+class Plan:
+    id: str
+    title: str
+    description: str = ""
+    scope: str = "project"  # project, sprint, session, milestone, custom
+    status: str = "draft"  # draft, active, paused, completed, abandoned
+    priority: str = "medium"  # low, medium, high, critical
+    session_id: Optional[str] = None  # pin to a session
+    project: Optional[str] = None
+    branch: Optional[str] = None
+    due_date: Optional[str] = None  # ISO 8601
+    tags: str = "[]"  # JSON array
+    total_tasks: int = 0
+    completed_tasks: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+@dataclass
+class PlanTask:
+    id: str
+    plan_id: str
+    title: str
+    description: str = ""
+    status: str = "pending"  # pending, in_progress, completed, skipped, blocked
+    position: int = 0
+    assignee: Optional[str] = None  # agent or person
+    depends_on: Optional[str] = None  # task_id dependency
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+@dataclass
+class Spec:
+    id: str
+    title: str
+    description: str = ""
+    status: str = "draft"  # draft, review, approved, implemented, deprecated
+    priority: str = "medium"  # low, medium, high, critical
+    acceptance_criteria: str = "[]"  # JSON array of criteria strings
+    project: Optional[str] = None
+    branch: Optional[str] = None
+    session_id: Optional[str] = None
+    author_id: Optional[str] = None  # person id
+    tags: str = "[]"  # JSON array
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+@dataclass
+class Feature:
+    id: str
+    name: str
+    description: str = ""
+    status: str = "proposed"  # proposed, in_progress, completed, shipped, deprecated
+    priority: str = "medium"  # low, medium, high, critical
+    spec_id: Optional[str] = None  # linked spec
+    project: Optional[str] = None
+    branch: Optional[str] = None
+    session_id: Optional[str] = None
+    lead_id: Optional[str] = None  # person id
+    tags: str = "[]"  # JSON array
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+@dataclass
+class Component:
+    id: str
+    name: str
+    description: str = ""
+    type: str = "module"  # service, module, library, api, ui, database, infrastructure
+    project: Optional[str] = None
+    branch: Optional[str] = None
+    owner_id: Optional[str] = None  # person id
+    tech_stack: str = "[]"  # JSON array
+    tags: str = "[]"  # JSON array
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+@dataclass
+class Person:
+    id: str
+    name: str
+    type: str = "individual"  # individual, contractor, team_member
+    role: str = ""  # engineer, designer, pm, lead, devops, etc.
+    email: Optional[str] = None
+    github: Optional[str] = None
+    skills: str = "[]"  # JSON array
+    notes: str = ""
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+@dataclass
+class Team:
+    id: str
+    name: str
+    description: str = ""
+    project: Optional[str] = None
+    lead_id: Optional[str] = None  # person id
+    tags: str = "[]"  # JSON array
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+@dataclass
+class TeamMember:
+    team_id: str
+    person_id: str
+    role: str = "member"  # member, lead, contributor
+    joined_at: Optional[str] = None

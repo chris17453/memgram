@@ -15,11 +15,13 @@ TOOLS = [
         name="add_thought",
         description=(
             "Store a thought, observation, decision, idea, or note. "
-            "Use this to record anything worth remembering across sessions."
+            "Use this to record anything worth remembering across sessions. "
+            "IMPORTANT: You MUST pass session_id from your current session. Call start_session first if you don't have one."
         ),
         inputSchema={
             "type": "object",
             "properties": {
+                "session_id": {"type": "string", "description": "REQUIRED: Your current session ID from start_session. Used for attribution tracking."},
                 "summary": {"type": "string", "description": "Short searchable summary of the thought"},
                 "content": {"type": "string", "description": "Full detailed content"},
                 "type": {
@@ -28,14 +30,15 @@ TOOLS = [
                     "description": "Type of thought",
                     "default": "note",
                 },
-                "session_id": {"type": "string", "description": "Current session ID"},
                 "project": {"type": "string", "description": "Project tag"},
                 "branch": {"type": "string", "description": "Git branch name (optional)"},
+                "agent_type": {"type": "string", "description": "AI agent type: copilot, claude, cursor, codex, etc. (auto-resolved from session if omitted)"},
+                "agent_model": {"type": "string", "description": "Model identifier: gpt-4, claude-sonnet-4, etc. (auto-resolved from session if omitted)"},
                 "keywords": {"type": "array", "items": {"type": "string"}, "description": "Keywords for search"},
                 "associated_files": {"type": "array", "items": {"type": "string"}, "description": "Related file paths"},
                 "pinned": {"type": "boolean", "description": "Pin to always load in this project's context", "default": False},
             },
-            "required": ["summary"],
+            "required": ["summary", "session_id"],
         },
     ),
     Tool(
@@ -62,11 +65,13 @@ TOOLS = [
         name="add_rule",
         description=(
             "Store a learned rule — something to always do, never do, or do in specific contexts. "
-            "Rules persist across sessions and are automatically surfaced when relevant."
+            "Rules persist across sessions and are automatically surfaced when relevant. "
+            "IMPORTANT: You MUST pass session_id from your current session. Call start_session first if you don't have one."
         ),
         inputSchema={
             "type": "object",
             "properties": {
+                "session_id": {"type": "string", "description": "REQUIRED: Your current session ID from start_session. Used for attribution tracking."},
                 "summary": {"type": "string", "description": "Short rule description (e.g., 'Always use type hints in Python')"},
                 "content": {"type": "string", "description": "Full explanation of the rule and reasoning"},
                 "type": {
@@ -80,14 +85,15 @@ TOOLS = [
                     "description": "'critical' = never violate, 'preference' = soft guideline, 'context_dependent' = situational",
                 },
                 "condition": {"type": "string", "description": "When does this rule apply? (e.g., 'When writing Python async code')"},
-                "session_id": {"type": "string"},
                 "project": {"type": "string", "description": "Project tag (null = global rule)"},
                 "branch": {"type": "string", "description": "Git branch name (optional, null = branch-global rule)"},
+                "agent_type": {"type": "string", "description": "AI agent type (auto-resolved from session if omitted)"},
+                "agent_model": {"type": "string", "description": "Model identifier (auto-resolved from session if omitted)"},
                 "keywords": {"type": "array", "items": {"type": "string"}},
                 "associated_files": {"type": "array", "items": {"type": "string"}},
                 "pinned": {"type": "boolean", "default": False},
             },
-            "required": ["summary", "type", "severity"],
+            "required": ["summary", "type", "severity", "session_id"],
         },
     ),
     Tool(
@@ -109,40 +115,51 @@ TOOLS = [
         name="add_error_pattern",
         description=(
             "Log a failure pattern: what went wrong, why, how it was fixed. "
-            "Optionally link to a prevention rule so the AI never repeats the mistake."
+            "Optionally link to a prevention rule so the AI never repeats the mistake. "
+            "IMPORTANT: You MUST pass session_id from your current session. Call start_session first if you don't have one."
         ),
         inputSchema={
             "type": "object",
             "properties": {
+                "session_id": {"type": "string", "description": "REQUIRED: Your current session ID from start_session. Used for attribution tracking."},
                 "error_description": {"type": "string", "description": "What went wrong"},
                 "cause": {"type": "string", "description": "Root cause"},
                 "fix": {"type": "string", "description": "How it was fixed"},
                 "prevention_rule_id": {"type": "string", "description": "ID of a rule created to prevent this"},
-                "session_id": {"type": "string"},
                 "project": {"type": "string"},
                 "branch": {"type": "string", "description": "Git branch name (optional)"},
+                "agent_type": {"type": "string", "description": "AI agent type (auto-resolved from session if omitted)"},
+                "agent_model": {"type": "string", "description": "Model identifier (auto-resolved from session if omitted)"},
                 "keywords": {"type": "array", "items": {"type": "string"}},
                 "associated_files": {"type": "array", "items": {"type": "string"}},
             },
-            "required": ["error_description"],
+            "required": ["error_description", "session_id"],
         },
     ),
     Tool(
         name="link_items",
         description=(
-            "Create a directional link between two items (thoughts, rules, error patterns). "
-            "Link types: informs, contradicts, supersedes, related, caused_by."
+            "Create a directional link between any two entities in the knowledge graph. "
+            "Connects thoughts, rules, errors, specs, features, components, plans, and people. "
+            "Link types: informs, contradicts, supersedes, related, caused_by, implements, owns, depends_on, authored_by."
         ),
         inputSchema={
             "type": "object",
             "properties": {
                 "from_id": {"type": "string"},
-                "from_type": {"type": "string", "enum": ["thought", "rule", "error_pattern"]},
+                "from_type": {
+                    "type": "string",
+                    "enum": ["thought", "rule", "error_pattern", "spec", "feature", "component", "plan", "person"],
+                },
                 "to_id": {"type": "string"},
-                "to_type": {"type": "string", "enum": ["thought", "rule", "error_pattern"]},
+                "to_type": {
+                    "type": "string",
+                    "enum": ["thought", "rule", "error_pattern", "spec", "feature", "component", "plan", "person"],
+                },
                 "link_type": {
                     "type": "string",
-                    "enum": ["informs", "contradicts", "supersedes", "related", "caused_by"],
+                    "enum": ["informs", "contradicts", "supersedes", "related", "caused_by",
+                             "implements", "owns", "depends_on", "authored_by"],
                     "default": "related",
                 },
             },

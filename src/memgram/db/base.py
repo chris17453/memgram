@@ -197,10 +197,27 @@ class MemgramDB:
 
     # ── Thoughts ────────────────────────────────────────────────────────
 
+    def _resolve_agent(
+        self, session_id: Optional[str],
+        agent_type: Optional[str] = None, agent_model: Optional[str] = None,
+    ) -> tuple[Optional[str], Optional[str]]:
+        """Resolve agent_type/agent_model from explicit args or session lookup."""
+        if agent_type and agent_model:
+            return agent_type, agent_model
+        if session_id:
+            session = self.get_session(session_id)
+            if session:
+                return (
+                    agent_type or session.get("agent_type"),
+                    agent_model or session.get("model"),
+                )
+        return agent_type, agent_model
+
     def add_thought(
         self, summary: str, content: str = "", type: str = "note",
         session_id: Optional[str] = None, project: Optional[str] = None,
         branch: Optional[str] = None,
+        agent_type: Optional[str] = None, agent_model: Optional[str] = None,
         keywords: Optional[list[str]] = None,
         associated_files: Optional[list[str]] = None,
         pinned: bool = False,
@@ -208,13 +225,16 @@ class MemgramDB:
         ts = now_iso()
         tid = new_id()
         p = self._p
+        at, am = self._resolve_agent(session_id, agent_type, agent_model)
         self.backend.execute(
             f"""INSERT INTO thoughts
-               (id, session_id, type, summary, content, project, branch, keywords,
+               (id, session_id, type, summary, content, project, branch,
+                agent_type, agent_model, keywords,
                 associated_files, pinned, archived, access_count,
                 created_at, updated_at, last_accessed)
-               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},0,0,{p},{p},{p})""",
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},0,0,{p},{p},{p})""",
             (tid, session_id, type, summary, content, project, branch,
+             at, am,
              self.backend.encode_json(keywords or []),
              self.backend.encode_json(associated_files or []),
              1 if pinned else 0, ts, ts, ts),
@@ -253,6 +273,7 @@ class MemgramDB:
         severity: str = "preference", condition: Optional[str] = None,
         session_id: Optional[str] = None, project: Optional[str] = None,
         branch: Optional[str] = None,
+        agent_type: Optional[str] = None, agent_model: Optional[str] = None,
         keywords: Optional[list[str]] = None,
         associated_files: Optional[list[str]] = None,
         pinned: bool = False,
@@ -260,13 +281,16 @@ class MemgramDB:
         ts = now_iso()
         rid = new_id()
         p = self._p
+        at, am = self._resolve_agent(session_id, agent_type, agent_model)
         self.backend.execute(
             f"""INSERT INTO rules
                (id, session_id, type, severity, summary, content, condition, project, branch,
+                agent_type, agent_model,
                 keywords, associated_files, pinned, archived, reinforcement_count,
                 created_at, updated_at, last_accessed)
-               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},0,1,{p},{p},{p})""",
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},0,1,{p},{p},{p})""",
             (rid, session_id, type, severity, summary, content, condition, project, branch,
+             at, am,
              self.backend.encode_json(keywords or []),
              self.backend.encode_json(associated_files or []),
              1 if pinned else 0, ts, ts, ts),
@@ -379,19 +403,23 @@ class MemgramDB:
         fix: Optional[str] = None, prevention_rule_id: Optional[str] = None,
         session_id: Optional[str] = None, project: Optional[str] = None,
         branch: Optional[str] = None,
+        agent_type: Optional[str] = None, agent_model: Optional[str] = None,
         keywords: Optional[list[str]] = None,
         associated_files: Optional[list[str]] = None,
     ) -> dict:
         ts = now_iso()
         eid = new_id()
         p = self._p
+        at, am = self._resolve_agent(session_id, agent_type, agent_model)
         self.backend.execute(
             f"""INSERT INTO error_patterns
                (id, session_id, error_description, cause, fix, prevention_rule_id,
-                project, branch, keywords, associated_files, created_at)
-               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+                project, branch, agent_type, agent_model,
+                keywords, associated_files, created_at)
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
             (eid, session_id, error_description, cause, fix, prevention_rule_id,
-             project, branch, self.backend.encode_json(keywords or []),
+             project, branch, at, am,
+             self.backend.encode_json(keywords or []),
              self.backend.encode_json(associated_files or []), ts),
         )
         return self.backend.fetchone(f"SELECT * FROM error_patterns WHERE id={p}", (eid,))
@@ -519,6 +547,7 @@ class MemgramDB:
         tables = [
             "sessions", "thoughts", "rules", "error_patterns",
             "session_summaries", "thought_groups", "embedding_meta",
+            "plans", "specs", "features", "components",
         ]
         updated: dict[str, int] = {}
         for tbl in tables:
@@ -699,6 +728,515 @@ class MemgramDB:
                 return self.backend.fetchone(f"SELECT * FROM {table} WHERE id={p}", (item_id,))
         return None
 
+    # ── Plans ──────────────────────────────────────────────────────────
+
+    def create_plan(
+        self, title: str, description: str = "",
+        scope: str = "project", priority: str = "medium",
+        session_id: Optional[str] = None,
+        project: Optional[str] = None, branch: Optional[str] = None,
+        due_date: Optional[str] = None, tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        pid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO plans
+               (id, title, description, scope, status, priority, session_id,
+                project, branch, due_date, tags, total_tasks, completed_tasks,
+                created_at, updated_at)
+               VALUES ({p},{p},{p},{p},'draft',{p},{p},{p},{p},{p},{p},0,0,{p},{p})""",
+            (pid, title, description, scope, priority, session_id,
+             project, branch, due_date,
+             self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM plans WHERE id={p}", (pid,))
+
+    def update_plan(self, plan_id: str, **fields) -> Optional[dict]:
+        allowed = {"title", "description", "scope", "status", "priority",
+                    "session_id", "project", "branch", "due_date", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.get_plan(plan_id)
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [plan_id]
+        self.backend.execute(f"UPDATE plans SET {set_clause} WHERE id={p}", vals)
+        return self.get_plan(plan_id)
+
+    def get_plan(self, plan_id: str) -> Optional[dict]:
+        p = self._p
+        plan = self.backend.fetchone(f"SELECT * FROM plans WHERE id={p}", (plan_id,))
+        if plan:
+            plan["tasks"] = self.backend.fetchall(
+                f"SELECT * FROM plan_tasks WHERE plan_id={p} ORDER BY position, created_at",
+                (plan_id,),
+            )
+        return plan
+
+    def list_plans(
+        self, project: Optional[str] = None, branch: Optional[str] = None,
+        session_id: Optional[str] = None, status: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        p = self._p
+        q = "SELECT * FROM plans WHERE 1=1"
+        params: list[Any] = []
+        if project:
+            q += f" AND (project={p} OR project IS NULL)"
+            params.append(project)
+        if branch:
+            q += f" AND (branch={p} OR branch IS NULL)"
+            params.append(branch)
+        if session_id:
+            q += f" AND session_id={p}"
+            params.append(session_id)
+        if status:
+            q += f" AND status={p}"
+            params.append(status)
+        q += f" ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, updated_at DESC LIMIT {p}"
+        params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    def _refresh_plan_counts(self, plan_id: str) -> None:
+        """Recalculate total_tasks and completed_tasks for a plan."""
+        p = self._p
+        row = self.backend.fetchone(
+            f"SELECT COUNT(*) AS total, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS done FROM plan_tasks WHERE plan_id={p}",
+            (plan_id,),
+        )
+        total = row["total"] if row else 0
+        done = row["done"] if row and row["done"] else 0
+        self.backend.execute(
+            f"UPDATE plans SET total_tasks={p}, completed_tasks={p}, updated_at={p} WHERE id={p}",
+            (total, done, now_iso(), plan_id),
+        )
+
+    def add_plan_task(
+        self, plan_id: str, title: str, description: str = "",
+        assignee: Optional[str] = None, depends_on: Optional[str] = None,
+        position: Optional[int] = None,
+    ) -> dict:
+        ts = now_iso()
+        tid = new_id()
+        p = self._p
+        if position is None:
+            row = self.backend.fetchone(
+                f"SELECT COALESCE(MAX(position), -1) + 1 AS next_pos FROM plan_tasks WHERE plan_id={p}",
+                (plan_id,),
+            )
+            position = row["next_pos"] if row else 0
+        self.backend.execute(
+            f"""INSERT INTO plan_tasks
+               (id, plan_id, title, description, status, position, assignee, depends_on,
+                created_at, updated_at)
+               VALUES ({p},{p},{p},{p},'pending',{p},{p},{p},{p},{p})""",
+            (tid, plan_id, title, description, position, assignee, depends_on, ts, ts),
+        )
+        self._refresh_plan_counts(plan_id)
+        return self.backend.fetchone(f"SELECT * FROM plan_tasks WHERE id={p}", (tid,))
+
+    def update_plan_task(self, task_id: str, **fields) -> Optional[dict]:
+        allowed = {"title", "description", "status", "position", "assignee", "depends_on"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM plan_tasks WHERE id={self._p}", (task_id,))
+        updates["updated_at"] = now_iso()
+        if updates.get("status") == "completed":
+            updates["completed_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [task_id]
+        self.backend.execute(f"UPDATE plan_tasks SET {set_clause} WHERE id={p}", vals)
+        # Refresh parent plan counts
+        task = self.backend.fetchone(f"SELECT * FROM plan_tasks WHERE id={p}", (task_id,))
+        if task:
+            self._refresh_plan_counts(task["plan_id"])
+        return task
+
+    def delete_plan_task(self, task_id: str) -> bool:
+        p = self._p
+        task = self.backend.fetchone(f"SELECT plan_id FROM plan_tasks WHERE id={p}", (task_id,))
+        self.backend.execute(f"DELETE FROM plan_tasks WHERE id={p}", (task_id,))
+        deleted = self.backend.last_rowcount() > 0
+        if deleted and task:
+            self._refresh_plan_counts(task["plan_id"])
+        return deleted
+
+    # ── Specs ──────────────────────────────────────────────────────────
+
+    def create_spec(
+        self, title: str, description: str = "",
+        status: str = "draft", priority: str = "medium",
+        acceptance_criteria: Optional[list[str]] = None,
+        project: Optional[str] = None, branch: Optional[str] = None,
+        session_id: Optional[str] = None, author_id: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        sid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO specs
+               (id, title, description, status, priority, acceptance_criteria,
+                project, branch, session_id, author_id, tags, created_at, updated_at)
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (sid, title, description, status, priority,
+             self.backend.encode_json(acceptance_criteria or []),
+             project, branch, session_id, author_id,
+             self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM specs WHERE id={p}", (sid,))
+
+    def update_spec(self, spec_id: str, **fields) -> Optional[dict]:
+        allowed = {"title", "description", "status", "priority", "acceptance_criteria",
+                    "project", "branch", "session_id", "author_id", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM specs WHERE id={self._p}", (spec_id,))
+        for json_field in ("acceptance_criteria", "tags"):
+            if json_field in updates and isinstance(updates[json_field], list):
+                updates[json_field] = self.backend.encode_json(updates[json_field])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [spec_id]
+        self.backend.execute(f"UPDATE specs SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM specs WHERE id={p}", (spec_id,))
+
+    def get_spec(self, spec_id: str) -> Optional[dict]:
+        p = self._p
+        spec = self.backend.fetchone(f"SELECT * FROM specs WHERE id={p}", (spec_id,))
+        if spec:
+            # Include linked features
+            spec["features"] = self.backend.fetchall(
+                f"SELECT * FROM features WHERE spec_id={p}", (spec_id,),
+            )
+        return spec
+
+    def list_specs(
+        self, project: Optional[str] = None, branch: Optional[str] = None,
+        status: Optional[str] = None, limit: int = 50,
+    ) -> list[dict]:
+        p = self._p
+        q = "SELECT * FROM specs WHERE 1=1"
+        params: list[Any] = []
+        if project:
+            q += f" AND (project={p} OR project IS NULL)"
+            params.append(project)
+        if branch:
+            q += f" AND (branch={p} OR branch IS NULL)"
+            params.append(branch)
+        if status:
+            q += f" AND status={p}"
+            params.append(status)
+        q += f" ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, updated_at DESC LIMIT {p}"
+        params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Features ───────────────────────────────────────────────────────
+
+    def create_feature(
+        self, name: str, description: str = "",
+        status: str = "proposed", priority: str = "medium",
+        spec_id: Optional[str] = None,
+        project: Optional[str] = None, branch: Optional[str] = None,
+        session_id: Optional[str] = None, lead_id: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        fid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO features
+               (id, name, description, status, priority, spec_id,
+                project, branch, session_id, lead_id, tags, created_at, updated_at)
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (fid, name, description, status, priority, spec_id,
+             project, branch, session_id, lead_id,
+             self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM features WHERE id={p}", (fid,))
+
+    def update_feature(self, feature_id: str, **fields) -> Optional[dict]:
+        allowed = {"name", "description", "status", "priority", "spec_id",
+                    "project", "branch", "session_id", "lead_id", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM features WHERE id={self._p}", (feature_id,))
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [feature_id]
+        self.backend.execute(f"UPDATE features SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM features WHERE id={p}", (feature_id,))
+
+    def get_feature(self, feature_id: str) -> Optional[dict]:
+        p = self._p
+        feature = self.backend.fetchone(f"SELECT * FROM features WHERE id={p}", (feature_id,))
+        if feature:
+            # Include linked components via thought_links
+            links = self.backend.fetchall(
+                f"SELECT * FROM thought_links WHERE (from_id={p} OR to_id={p})",
+                (feature_id, feature_id),
+            )
+            feature["links"] = links
+        return feature
+
+    def list_features(
+        self, project: Optional[str] = None, branch: Optional[str] = None,
+        status: Optional[str] = None, spec_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        p = self._p
+        q = "SELECT * FROM features WHERE 1=1"
+        params: list[Any] = []
+        if project:
+            q += f" AND (project={p} OR project IS NULL)"
+            params.append(project)
+        if branch:
+            q += f" AND (branch={p} OR branch IS NULL)"
+            params.append(branch)
+        if status:
+            q += f" AND status={p}"
+            params.append(status)
+        if spec_id:
+            q += f" AND spec_id={p}"
+            params.append(spec_id)
+        q += f" ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, updated_at DESC LIMIT {p}"
+        params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Components ─────────────────────────────────────────────────────
+
+    def create_component(
+        self, name: str, description: str = "",
+        type: str = "module",
+        project: Optional[str] = None, branch: Optional[str] = None,
+        owner_id: Optional[str] = None,
+        tech_stack: Optional[list[str]] = None,
+        tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        cid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO components
+               (id, name, description, type, project, branch, owner_id,
+                tech_stack, tags, created_at, updated_at)
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (cid, name, description, type, project, branch, owner_id,
+             self.backend.encode_json(tech_stack or []),
+             self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM components WHERE id={p}", (cid,))
+
+    def update_component(self, component_id: str, **fields) -> Optional[dict]:
+        allowed = {"name", "description", "type", "project", "branch",
+                    "owner_id", "tech_stack", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM components WHERE id={self._p}", (component_id,))
+        for json_field in ("tech_stack", "tags"):
+            if json_field in updates and isinstance(updates[json_field], list):
+                updates[json_field] = self.backend.encode_json(updates[json_field])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [component_id]
+        self.backend.execute(f"UPDATE components SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM components WHERE id={p}", (component_id,))
+
+    def get_component(self, component_id: str) -> Optional[dict]:
+        p = self._p
+        comp = self.backend.fetchone(f"SELECT * FROM components WHERE id={p}", (component_id,))
+        if comp:
+            links = self.backend.fetchall(
+                f"SELECT * FROM thought_links WHERE (from_id={p} OR to_id={p})",
+                (component_id, component_id),
+            )
+            comp["links"] = links
+        return comp
+
+    def list_components(
+        self, project: Optional[str] = None, branch: Optional[str] = None,
+        type: Optional[str] = None, owner_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        p = self._p
+        q = "SELECT * FROM components WHERE 1=1"
+        params: list[Any] = []
+        if project:
+            q += f" AND (project={p} OR project IS NULL)"
+            params.append(project)
+        if branch:
+            q += f" AND (branch={p} OR branch IS NULL)"
+            params.append(branch)
+        if type:
+            q += f" AND type={p}"
+            params.append(type)
+        if owner_id:
+            q += f" AND owner_id={p}"
+            params.append(owner_id)
+        q += f" ORDER BY name LIMIT {p}"
+        params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── People ─────────────────────────────────────────────────────────
+
+    def add_person(
+        self, name: str, type: str = "individual", role: str = "",
+        email: Optional[str] = None, github: Optional[str] = None,
+        skills: Optional[list[str]] = None, notes: str = "",
+    ) -> dict:
+        ts = now_iso()
+        pid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO people
+               (id, name, type, role, email, github, skills, notes, created_at, updated_at)
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})""",
+            (pid, name, type, role, email, github,
+             self.backend.encode_json(skills or []), notes, ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM people WHERE id={p}", (pid,))
+
+    def update_person(self, person_id: str, **fields) -> Optional[dict]:
+        allowed = {"name", "type", "role", "email", "github", "skills", "notes"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM people WHERE id={self._p}", (person_id,))
+        if "skills" in updates and isinstance(updates["skills"], list):
+            updates["skills"] = self.backend.encode_json(updates["skills"])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [person_id]
+        self.backend.execute(f"UPDATE people SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM people WHERE id={p}", (person_id,))
+
+    def get_person(self, person_id: str) -> Optional[dict]:
+        p = self._p
+        person = self.backend.fetchone(f"SELECT * FROM people WHERE id={p}", (person_id,))
+        if person:
+            person["owned_components"] = self.backend.fetchall(
+                f"SELECT id, name, type, project FROM components WHERE owner_id={p}", (person_id,),
+            )
+            person["led_features"] = self.backend.fetchall(
+                f"SELECT id, name, status, project FROM features WHERE lead_id={p}", (person_id,),
+            )
+            person["authored_specs"] = self.backend.fetchall(
+                f"SELECT id, title, status, project FROM specs WHERE author_id={p}", (person_id,),
+            )
+            person["teams"] = self.backend.fetchall(
+                f"""SELECT t.id, t.name, t.project, tm.role AS member_role
+                    FROM team_members tm JOIN teams t ON tm.team_id=t.id
+                    WHERE tm.person_id={p}""",
+                (person_id,),
+            )
+        return person
+
+    def list_people(self, role: Optional[str] = None, limit: int = 100) -> list[dict]:
+        p = self._p
+        q = "SELECT * FROM people WHERE 1=1"
+        params: list[Any] = []
+        if role:
+            q += f" AND role={p}"
+            params.append(role)
+        q += f" ORDER BY name LIMIT {p}"
+        params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    # ── Teams ──────────────────────────────────────────────────────────
+
+    def create_team(
+        self, name: str, description: str = "",
+        project: Optional[str] = None, lead_id: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+    ) -> dict:
+        ts = now_iso()
+        tid = new_id()
+        p = self._p
+        self.backend.execute(
+            f"""INSERT INTO teams
+               (id, name, description, project, lead_id, tags, created_at, updated_at)
+               VALUES ({p},{p},{p},{p},{p},{p},{p},{p})""",
+            (tid, name, description, project, lead_id,
+             self.backend.encode_json(tags or []), ts, ts),
+        )
+        return self.backend.fetchone(f"SELECT * FROM teams WHERE id={p}", (tid,))
+
+    def update_team(self, team_id: str, **fields) -> Optional[dict]:
+        allowed = {"name", "description", "project", "lead_id", "tags"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.backend.fetchone(f"SELECT * FROM teams WHERE id={self._p}", (team_id,))
+        if "tags" in updates and isinstance(updates["tags"], list):
+            updates["tags"] = self.backend.encode_json(updates["tags"])
+        updates["updated_at"] = now_iso()
+        p = self._p
+        set_clause = ", ".join(f"{k}={p}" for k in updates)
+        vals = list(updates.values()) + [team_id]
+        self.backend.execute(f"UPDATE teams SET {set_clause} WHERE id={p}", vals)
+        return self.backend.fetchone(f"SELECT * FROM teams WHERE id={p}", (team_id,))
+
+    def get_team(self, team_id: str) -> Optional[dict]:
+        p = self._p
+        team = self.backend.fetchone(f"SELECT * FROM teams WHERE id={p}", (team_id,))
+        if team:
+            team["members"] = self.backend.fetchall(
+                f"""SELECT p.id, p.name, p.type, p.role, p.email, p.github, tm.role AS member_role
+                    FROM team_members tm JOIN people p ON tm.person_id=p.id
+                    WHERE tm.team_id={p} ORDER BY p.name""",
+                (team_id,),
+            )
+        return team
+
+    def list_teams(
+        self, project: Optional[str] = None, limit: int = 50,
+    ) -> list[dict]:
+        p = self._p
+        q = "SELECT * FROM teams WHERE 1=1"
+        params: list[Any] = []
+        if project:
+            q += f" AND (project={p} OR project IS NULL)"
+            params.append(project)
+        q += f" ORDER BY name LIMIT {p}"
+        params.append(limit)
+        return self.backend.fetchall(q, params)
+
+    def add_team_member(
+        self, team_id: str, person_id: str, role: str = "member",
+    ) -> dict:
+        ts = now_iso()
+        p = self._p
+        existing = self.backend.fetchone(
+            f"SELECT * FROM team_members WHERE team_id={p} AND person_id={p}",
+            (team_id, person_id),
+        )
+        if not existing:
+            self.backend.execute(
+                f"INSERT INTO team_members (team_id, person_id, role, joined_at) VALUES ({p},{p},{p},{p})",
+                (team_id, person_id, role, ts),
+            )
+        self.backend.execute(
+            f"UPDATE teams SET updated_at={p} WHERE id={p}", (ts, team_id),
+        )
+        return {"team_id": team_id, "person_id": person_id, "role": role, "joined_at": ts}
+
+    def remove_team_member(self, team_id: str, person_id: str) -> bool:
+        p = self._p
+        self.backend.execute(
+            f"DELETE FROM team_members WHERE team_id={p} AND person_id={p}",
+            (team_id, person_id),
+        )
+        return self.backend.last_rowcount() > 0
+
     # ── Search ──────────────────────────────────────────────────────────
 
     def search(
@@ -783,6 +1321,118 @@ class MemgramDB:
     def delete_embedding(self, item_id: str) -> None:
         """Remove embeddings for an item."""
         self.backend.delete_embedding(item_id)
+
+    # ── Agent Stats / Reporting ──────────────────────────────────────────
+
+    def get_agent_stats(self, project: Optional[str] = None) -> dict:
+        """Get contribution stats broken down by agent_type and model."""
+        p = self._p
+        proj_filter = f" AND project={p}" if project else ""
+        proj_params: list[Any] = [project] if project else []
+
+        # Sessions by agent
+        sessions = self.backend.fetchall(
+            f"""SELECT agent_type, model AS agent_model,
+                       COUNT(*) AS session_count,
+                       MIN(started_at) AS first_seen,
+                       MAX(started_at) AS last_seen
+                FROM sessions WHERE 1=1{proj_filter}
+                GROUP BY agent_type, model
+                ORDER BY session_count DESC""",
+            proj_params,
+        )
+
+        # Thoughts by agent
+        thoughts = self.backend.fetchall(
+            f"""SELECT agent_type, agent_model,
+                       COUNT(*) AS thought_count
+                FROM thoughts WHERE agent_type IS NOT NULL{proj_filter}
+                GROUP BY agent_type, agent_model
+                ORDER BY thought_count DESC""",
+            proj_params,
+        )
+
+        # Rules by agent
+        rules = self.backend.fetchall(
+            f"""SELECT agent_type, agent_model,
+                       COUNT(*) AS rule_count
+                FROM rules WHERE agent_type IS NOT NULL{proj_filter}
+                GROUP BY agent_type, agent_model
+                ORDER BY rule_count DESC""",
+            proj_params,
+        )
+
+        # Error patterns by agent
+        errors = self.backend.fetchall(
+            f"""SELECT agent_type, agent_model,
+                       COUNT(*) AS error_count
+                FROM error_patterns WHERE agent_type IS NOT NULL{proj_filter}
+                GROUP BY agent_type, agent_model
+                ORDER BY error_count DESC""",
+            proj_params,
+        )
+
+        # Build a combined view keyed by (agent_type, agent_model)
+        agents: dict[tuple, dict] = {}
+        for row in sessions:
+            key = (row["agent_type"], row["agent_model"])
+            agents.setdefault(key, {
+                "agent_type": row["agent_type"],
+                "agent_model": row["agent_model"],
+                "sessions": 0, "thoughts": 0, "rules": 0, "errors": 0,
+                "first_seen": None, "last_seen": None,
+            })
+            agents[key]["sessions"] = row["session_count"]
+            agents[key]["first_seen"] = row["first_seen"]
+            agents[key]["last_seen"] = row["last_seen"]
+
+        for row in thoughts:
+            key = (row["agent_type"], row["agent_model"])
+            agents.setdefault(key, {
+                "agent_type": row["agent_type"],
+                "agent_model": row["agent_model"],
+                "sessions": 0, "thoughts": 0, "rules": 0, "errors": 0,
+                "first_seen": None, "last_seen": None,
+            })
+            agents[key]["thoughts"] = row["thought_count"]
+
+        for row in rules:
+            key = (row["agent_type"], row["agent_model"])
+            agents.setdefault(key, {
+                "agent_type": row["agent_type"],
+                "agent_model": row["agent_model"],
+                "sessions": 0, "thoughts": 0, "rules": 0, "errors": 0,
+                "first_seen": None, "last_seen": None,
+            })
+            agents[key]["rules"] = row["rule_count"]
+
+        for row in errors:
+            key = (row["agent_type"], row["agent_model"])
+            agents.setdefault(key, {
+                "agent_type": row["agent_type"],
+                "agent_model": row["agent_model"],
+                "sessions": 0, "thoughts": 0, "rules": 0, "errors": 0,
+                "first_seen": None, "last_seen": None,
+            })
+            agents[key]["errors"] = row["error_count"]
+
+        # Sort by total contributions
+        agent_list = sorted(
+            agents.values(),
+            key=lambda a: a["sessions"] + a["thoughts"] + a["rules"] + a["errors"],
+            reverse=True,
+        )
+
+        # Totals
+        totals = {
+            "total_agents": len(agent_list),
+            "total_sessions": sum(a["sessions"] for a in agent_list),
+            "total_thoughts": sum(a["thoughts"] for a in agent_list),
+            "total_rules": sum(a["rules"] for a in agent_list),
+            "total_errors": sum(a["errors"] for a in agent_list),
+        }
+
+        return {"agents": agent_list, "totals": totals, "project": project}
 
     # ── Health / Diagnostics ─────────────────────────────────────────────
 
