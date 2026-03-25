@@ -16,7 +16,7 @@ A persistent memory layer for AI assistants, built as an [MCP](https://modelcont
 - **Health diagnostics** — WAL/foreign-key checks, vector availability, table counts
 - **Thought groups** — cluster related items together
 - **Project summaries** — living overviews that auto-update
-- **Markdown export** — linked markdown with human-readable slugs (no more opaque IDs)
+- **Three export formats** — markdown (linked `.md` files), web (navigable HTML site), and PDF (dark-themed report with full content, markdown rendering, and mermaid diagrams)
 - **Project cleanup** — list, merge, or rename projects to fix typos
 - **Abstracted DB layer** — SQLite now, PostgreSQL/pgvector ready
 
@@ -40,6 +40,9 @@ memgram serve --embedding-dim 1536
 
 # Export database as markdown
 memgram export -o memgram-export
+
+# Export as PDF report
+memgram export-pdf -o report.pdf --project myapp
 ```
 
 ## CLI Subcommands
@@ -48,6 +51,8 @@ memgram export -o memgram-export
 |---------|-------------|
 | `memgram serve` | Run the MCP server over stdio (default when no subcommand given) |
 | `memgram export` | Export the database as a tree of linked markdown files (slug filenames) |
+| `memgram export-web` | Export as a navigable Jekyll HTML website |
+| `memgram export-pdf` | Export as a styled dark-themed PDF report |
 | `memgram migrate-exports` | Rename legacy ID-based export files to slugs and fix links |
 | `memgram list-projects` | List all projects with counts (even if no summary exists) |
 | `memgram merge-projects <from> <to>` | Merge all data from one project into another (typo cleanup) |
@@ -185,7 +190,7 @@ src/memgram/
 ├── server.py              # MCP server entry point (stdio) + CLI subcommands
 ├── models.py              # Data models
 ├── utils.py               # ID generation, timestamps, name normalization
-├── export.py              # Markdown export (memgram export)
+├── export.py              # Export engine (markdown, web, PDF)
 ├── db/
 │   ├── __init__.py        # create_db() factory
 │   ├── base.py            # DatabaseBackend ABC + MemgramDB business logic

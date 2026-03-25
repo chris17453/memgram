@@ -1,6 +1,6 @@
 # Export
 
-Memgram supports two export formats: **markdown** (linked `.md` files) and **web** (navigable HTML site). Both produce human-readable slugs (no opaque IDs) and support project filtering. Useful for auditing, sharing, or backing up your knowledge base.
+Memgram supports three export formats: **markdown** (linked `.md` files), **web** (navigable HTML site), and **PDF** (dark-themed report). All produce human-readable output and support project filtering. Useful for auditing, sharing, or backing up your knowledge base.
 
 ## Markdown Export
 
@@ -38,6 +38,37 @@ After export, browse locally:
 ```bash
 python -m http.server -d memgram-web
 # or just open memgram-web/index.html
+```
+
+## PDF Export
+
+Export as a styled dark-themed PDF report with cover page, linked table of contents, summary tables, and full detail sections for every entity type.
+
+```bash
+# Default: exports to ./report.pdf
+memgram export-pdf
+
+# Custom output file
+memgram export-pdf -o ./my-report.pdf
+
+# Export only a specific project
+memgram export-pdf --project myapp
+```
+
+The PDF includes:
+
+- **Cover page** with entity count stats grid
+- **Linked table of contents** that jumps to each section
+- **Summary tables** for each entity type (sessions, thoughts, rules, errors, etc.)
+- **Full detail sections** with complete content for every item — no truncation
+- **Markdown rendering** — headers, bullet lists, bold, inline code, and numbered lists are properly formatted
+- **Mermaid diagram rendering** — if `mmdc` ([mermaid-cli](https://github.com/mermaid-js/mermaid-cli)) is installed, diagrams render as images; otherwise the source is shown as formatted code
+- **Dark theme** throughout with consistent styling
+
+To get rendered diagram images in the PDF, install mermaid-cli:
+
+```bash
+npm install -g @mermaid-js/mermaid-cli
 ```
 
 ## Output Structure

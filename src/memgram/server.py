@@ -99,6 +99,24 @@ def main() -> None:
         help="Export only a specific project (default: all)",
     )
 
+    # -- export-pdf --
+    export_pdf_parser = subparsers.add_parser(
+        "export-pdf",
+        help="Export database as a spacious PDF report with rendered charts",
+    )
+    export_pdf_parser.add_argument(
+        "-o", "--output",
+        type=str,
+        default="memgram-export.pdf",
+        help="Output PDF file (default: memgram-export.pdf)",
+    )
+    export_pdf_parser.add_argument(
+        "--project",
+        type=str,
+        default=None,
+        help="Export only a specific project (default: all)",
+    )
+
     migrate_parser = subparsers.add_parser(
         "migrate-exports",
         help="Rename legacy ID-named export files to slug filenames and fix links",
@@ -204,6 +222,12 @@ def main() -> None:
         print(f"\nReady to browse — no build step needed:")
         print(f"  python -m http.server -d {out_path.resolve()}")
         print(f"  # or just open {out_path.resolve()}/index.html")
+    elif args.command == "export-pdf":
+        from .export import export_pdf
+        from .utils import normalize_name
+        project = normalize_name(args.project) if args.project else None
+        out_path = export_pdf(db_path=args.db_path, output_file=args.output, project=project)
+        print(f"Exported PDF report to {out_path.resolve()}")
     elif args.command == "migrate-exports":
         from .export import rename_existing_exports
         result = rename_existing_exports(output_dir=args.input)

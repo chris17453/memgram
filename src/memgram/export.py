@@ -4816,6 +4816,1206 @@ def export_html(
     return Path(output_dir), file_count
 
 
+def export_pdf(
+    db_path: Optional[str] = None,
+    output_file: str = "memgram-export.pdf",
+    project: Optional[str] = None,
+) -> Path:
+    """Export memgram database as a spacious, readable PDF report.
+
+    Uses reportlab to generate a landscape PDF with generous sizing for
+    charts, diagrams, and tables. Chart.js configs are rendered as native
+    bar/line/pie charts via reportlab graphics.
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        BaseDocTemplate,
+        Frame,
+        Image,
+        NextPageTemplate,
+        PageBreak,
+        PageTemplate,
+        Paragraph,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    PAGE = landscape(letter)
+    PAGE_W, PAGE_H = PAGE
+    MARGIN = 0.6 * inch
+
+    db, data = _fetch_all_data(db_path, project=project)
+
+    sessions = data["sessions"]
+    thoughts = data["thoughts"]
+    rules = data["rules"]
+    errors = data["errors"]
+    groups = data["groups"]
+    plans = data.get("plans", [])
+    plan_tasks = data.get("plan_tasks", [])
+    specs = data.get("specs", [])
+    features = data.get("features", [])
+    components = data.get("components", [])
+    people = data.get("people", [])
+    teams_data = data.get("teams", [])
+    tickets = data.get("tickets", [])
+    instructions_data = data.get("instructions", [])
+    endpoints = data.get("endpoints", [])
+    credentials = data.get("credentials", [])
+    environments = data.get("environments", [])
+    deployments = data.get("deployments", [])
+    builds_data = data.get("builds", [])
+    incidents = data.get("incidents", [])
+    dependencies = data.get("dependencies", [])
+    runbooks = data.get("runbooks", [])
+    decisions = data.get("decisions", [])
+    diagrams_data = data.get("diagrams", [])
+    comments = data.get("comments", [])
+    audit_log = data.get("audit_log", [])
+
+    tasks_by_plan: dict[str, list] = {}
+    for t in plan_tasks:
+        tasks_by_plan.setdefault(t["plan_id"], []).append(t)
+
+    db.close()
+
+    # ── Styles ────────────────────────────────────────────────────────
+    styles = getSampleStyleSheet()
+
+    # Dark palette
+    BG = colors.HexColor("#0d1117")
+    SURFACE = colors.HexColor("#161b22")
+    BORDER = colors.HexColor("#30363d")
+    TEXT = colors.HexColor("#c9d1d9")
+    TEXT_MUTED = colors.HexColor("#8b949e")
+    ACCENT = colors.HexColor("#58a6ff")
+    GREEN = colors.HexColor("#3fb950")
+    RED = colors.HexColor("#f85149")
+    ORANGE = colors.HexColor("#d29922")
+    PURPLE = colors.HexColor("#bc8cff")
+
+    CHART_COLORS = [
+        colors.HexColor("#58a6ff"),
+        colors.HexColor("#3fb950"),
+        colors.HexColor("#f85149"),
+        colors.HexColor("#d29922"),
+        colors.HexColor("#bc8cff"),
+        colors.HexColor("#f778ba"),
+        colors.HexColor("#79c0ff"),
+        colors.HexColor("#56d364"),
+    ]
+
+    sTitle = ParagraphStyle("PDFTitle", fontName="Helvetica-Bold", fontSize=28,
+                            textColor=ACCENT, spaceAfter=20, alignment=TA_CENTER)
+    sSubtitle = ParagraphStyle("PDFSubtitle", fontName="Helvetica", fontSize=14,
+                               textColor=TEXT_MUTED, spaceAfter=30, alignment=TA_CENTER)
+    sH1 = ParagraphStyle("PDFH1", fontName="Helvetica-Bold", fontSize=22,
+                         textColor=ACCENT, spaceBefore=24, spaceAfter=14)
+    sH2 = ParagraphStyle("PDFH2", fontName="Helvetica-Bold", fontSize=16,
+                         textColor=colors.HexColor("#79c0ff"), spaceBefore=18, spaceAfter=10)
+    sH3 = ParagraphStyle("PDFH3", fontName="Helvetica-Bold", fontSize=13,
+                         textColor=TEXT, spaceBefore=12, spaceAfter=6)
+    sBody = ParagraphStyle("PDFBody", fontName="Helvetica", fontSize=10,
+                           textColor=TEXT, leading=14, spaceAfter=6)
+    sBodySmall = ParagraphStyle("PDFBodySmall", fontName="Helvetica", fontSize=9,
+                                textColor=TEXT_MUTED, leading=12, spaceAfter=4)
+    sCode = ParagraphStyle("PDFCode", fontName="Courier", fontSize=8,
+                           textColor=TEXT, leading=10, spaceAfter=6,
+                           backColor=SURFACE, borderColor=BORDER,
+                           borderWidth=0.5, borderPadding=6)
+    sStat = ParagraphStyle("PDFStat", fontName="Helvetica-Bold", fontSize=20,
+                           textColor=ACCENT, alignment=TA_CENTER, spaceAfter=2)
+    sStatLabel = ParagraphStyle("PDFStatLabel", fontName="Helvetica", fontSize=11,
+                                textColor=TEXT_MUTED, alignment=TA_CENTER, spaceAfter=8)
+
+    content_width = PAGE_W - 2 * MARGIN - 12  # 12pt for Frame internal padding (6pt each side)
+
+    def _safe(text: Any) -> str:
+        """Escape text for reportlab Paragraph XML."""
+        if text is None:
+            return ""
+        s = str(text)
+        s = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return s
+
+    def _md_inline(s: str) -> str:
+        """Convert inline markdown to reportlab XML (expects already-escaped text)."""
+        # 1. Extract inline code spans first to protect their contents
+        code_spans: list[str] = []
+        def _stash_code(m):
+            code_spans.append(m.group(1))
+            return f"\x00CODE{len(code_spans) - 1}\x00"
+        s = re.sub(r'`([^`]+?)`', _stash_code, s)
+        # 2. Bold: **text** (skip __ to avoid __cplusplus false matches)
+        s = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', s)
+        # 3. Italic: *text* (not inside words)
+        s = re.sub(r'(?<!\w)\*([^*]+?)\*(?!\w)', r'<i>\1</i>', s)
+        # 4. Restore code spans
+        for idx, code in enumerate(code_spans):
+            s = s.replace(f"\x00CODE{idx}\x00", f'<font face="Courier" size="9">{code}</font>')
+        return s
+
+    def _md_to_story(text: str) -> list:
+        """Convert markdown-ish text to a list of reportlab flowables."""
+        if not text or not text.strip():
+            return []
+
+        elements = []
+        lines = text.split('\n')
+        i = 0
+        para_buf = []  # accumulate regular text lines
+
+        def flush_para():
+            if para_buf:
+                combined = ' '.join(para_buf)
+                combined = _md_inline(_safe(combined))
+                elements.append(Paragraph(combined, sBody))
+                para_buf.clear()
+
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+
+            # Code block
+            if stripped.startswith('```'):
+                flush_para()
+                code_lines = []
+                i += 1
+                while i < len(lines) and not lines[i].strip().startswith('```'):
+                    code_lines.append(_safe(lines[i]))
+                    i += 1
+                if code_lines:
+                    code_text = '<br/>'.join(code_lines)
+                    elements.append(Paragraph(code_text, sCode))
+                i += 1
+                continue
+
+            # Headers
+            if stripped.startswith('#### '):
+                flush_para()
+                elements.append(Paragraph(f"<b>{_safe(stripped[5:])}</b>", sBody))
+                i += 1
+                continue
+            if stripped.startswith('### '):
+                flush_para()
+                elements.append(Paragraph(_safe(stripped[4:]), sH3))
+                i += 1
+                continue
+            if stripped.startswith('## '):
+                flush_para()
+                elements.append(Paragraph(_safe(stripped[3:]), sH3))
+                i += 1
+                continue
+            if stripped.startswith('# '):
+                flush_para()
+                elements.append(Paragraph(_safe(stripped[2:]), sH3))
+                i += 1
+                continue
+
+            # Bullet lists
+            if re.match(r'^[-*+]\s', stripped):
+                flush_para()
+                bullet_text = _md_inline(_safe(stripped[2:]))
+                sBullet = ParagraphStyle("Bullet", parent=sBody, leftIndent=16,
+                                          bulletIndent=4, bulletFontName="Helvetica",
+                                          bulletFontSize=10, bulletColor=TEXT_MUTED,
+                                          spaceBefore=2, spaceAfter=2)
+                elements.append(Paragraph(bullet_text, sBullet, bulletText='\u2022'))
+                i += 1
+                continue
+
+            # Numbered lists
+            m = re.match(r'^(\d+)[.)]\s+(.*)', stripped)
+            if m:
+                flush_para()
+                num = m.group(1)
+                item_text = _md_inline(_safe(m.group(2)))
+                sNumbered = ParagraphStyle("Numbered", parent=sBody, leftIndent=20,
+                                            bulletIndent=0, spaceBefore=2, spaceAfter=2)
+                elements.append(Paragraph(f"<b>{num}.</b> {item_text}", sNumbered))
+                i += 1
+                continue
+
+            # Horizontal rule
+            if stripped in ('---', '***', '___'):
+                flush_para()
+                from reportlab.platypus import HRFlowable
+                elements.append(HRFlowable(width="100%", thickness=0.5, color=BORDER,
+                                            spaceAfter=6, spaceBefore=6))
+                i += 1
+                continue
+
+            # Empty line = paragraph break
+            if not stripped:
+                flush_para()
+                elements.append(Spacer(1, 4))
+                i += 1
+                continue
+
+            # Regular text - accumulate
+            para_buf.append(stripped)
+            i += 1
+
+        flush_para()
+        return elements
+
+    def _trunc(text: Any, maxlen: int = 120) -> str:
+        s = _safe(text)
+        return s[:maxlen] + "..." if len(s) > maxlen else s
+
+    def _make_table(headers: list[str], rows: list[list], col_widths: list | None = None) -> Table:
+        """Build a styled Table with dark theme."""
+        header_row = [Paragraph(f"<b>{_safe(h)}</b>", ParagraphStyle("TH", fontName="Helvetica-Bold",
+                      fontSize=9, textColor=colors.white, leading=12)) for h in headers]
+        data_rows = []
+        for row in rows:
+            data_rows.append([
+                Paragraph(_safe(str(c)), ParagraphStyle("TD", fontName="Helvetica",
+                          fontSize=9, textColor=TEXT, leading=12))
+                for c in row
+            ])
+
+        tdata = [header_row] + data_rows
+        t = Table(tdata, colWidths=col_widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#21262d")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+            ("TOPPADDING", (0, 0), (-1, 0), 8),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+            ("TOPPADDING", (0, 1), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("BACKGROUND", (0, 1), (-1, -1), SURFACE),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [SURFACE, colors.HexColor("#1c2128")]),
+            ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        return t
+
+    def _render_chart(defn_str: str, title: str) -> list:
+        """Render a Chart.js config as a reportlab Drawing."""
+        from reportlab.graphics import renderPDF
+        from reportlab.graphics.charts.barcharts import VerticalBarChart
+        from reportlab.graphics.charts.linecharts import HorizontalLineChart
+        from reportlab.graphics.charts.piecharts import Pie
+        from reportlab.graphics.shapes import Drawing, Rect, String
+
+        try:
+            cfg = json.loads(defn_str) if isinstance(defn_str, str) else defn_str
+        except (json.JSONDecodeError, TypeError):
+            return [Paragraph(f"<i>Could not parse chart config</i>", sBodySmall)]
+
+        chart_type = cfg.get("type", "bar").lower()
+        chart_data = cfg.get("data", {})
+        labels = chart_data.get("labels", [])
+        datasets = chart_data.get("datasets", [])
+
+        # Big generous sizing
+        draw_w = content_width
+        max_draw_h = PAGE_H - 2 * MARGIN - 60
+        draw_h = min(400, max_draw_h)
+
+        d = Drawing(draw_w, draw_h)
+
+        # Background
+        d.add(Rect(0, 0, draw_w, draw_h, fillColor=SURFACE, strokeColor=BORDER, strokeWidth=1))
+
+        # Chart title
+        d.add(String(draw_w / 2, draw_h - 25, title, fontSize=14,
+                      fillColor=ACCENT, textAnchor="middle", fontName="Helvetica-Bold"))
+
+        if chart_type in ("bar", "horizontalbar"):
+            chart = VerticalBarChart()
+            chart.x = 80
+            chart.y = 60
+            chart.width = draw_w - 160
+            chart.height = draw_h - 120
+            chart.data = []
+            for ds in datasets:
+                vals = ds.get("data", [])
+                chart.data.append(vals)
+            if labels:
+                chart.categoryAxis.categoryNames = labels
+            chart.categoryAxis.labels.fontName = "Helvetica"
+            chart.categoryAxis.labels.fontSize = 10
+            chart.categoryAxis.labels.fillColor = TEXT
+            chart.categoryAxis.strokeColor = BORDER
+            chart.categoryAxis.tickDown = 0
+            chart.valueAxis.labels.fontName = "Helvetica"
+            chart.valueAxis.labels.fontSize = 10
+            chart.valueAxis.labels.fillColor = TEXT
+            chart.valueAxis.strokeColor = BORDER
+            chart.valueAxis.gridStrokeColor = BORDER
+            chart.valueAxis.gridStrokeWidth = 0.5
+            chart.valueAxis.visibleGrid = 1
+            for i, ds in enumerate(datasets):
+                color = CHART_COLORS[i % len(CHART_COLORS)]
+                bg = ds.get("backgroundColor")
+                if isinstance(bg, str) and bg.startswith("#"):
+                    color = colors.HexColor(bg)
+                chart.bars[i].fillColor = color
+                chart.bars[i].strokeColor = None
+            chart.barWidth = max(8, min(40, int((draw_w - 160) / max(len(labels), 1) / max(len(datasets), 1) * 0.6)))
+            d.add(chart)
+
+            # Legend
+            leg_y = 30
+            leg_x = 80
+            for i, ds in enumerate(datasets):
+                c = CHART_COLORS[i % len(CHART_COLORS)]
+                bg = ds.get("backgroundColor")
+                if isinstance(bg, str) and bg.startswith("#"):
+                    c = colors.HexColor(bg)
+                d.add(Rect(leg_x, leg_y, 12, 12, fillColor=c, strokeColor=None))
+                d.add(String(leg_x + 16, leg_y + 2, ds.get("label", f"Dataset {i+1}"),
+                             fontSize=10, fillColor=TEXT, fontName="Helvetica"))
+                leg_x += 150
+
+        elif chart_type in ("line", "scatter"):
+            chart = HorizontalLineChart()
+            chart.x = 80
+            chart.y = 60
+            chart.width = draw_w - 160
+            chart.height = draw_h - 120
+            chart.data = []
+            for ds in datasets:
+                vals = ds.get("data", [])
+                chart.data.append(vals)
+            if labels:
+                chart.categoryAxis.categoryNames = labels
+            chart.categoryAxis.labels.fontName = "Helvetica"
+            chart.categoryAxis.labels.fontSize = 10
+            chart.categoryAxis.labels.fillColor = TEXT
+            chart.categoryAxis.strokeColor = BORDER
+            chart.valueAxis.labels.fontName = "Helvetica"
+            chart.valueAxis.labels.fontSize = 10
+            chart.valueAxis.labels.fillColor = TEXT
+            chart.valueAxis.strokeColor = BORDER
+            chart.valueAxis.gridStrokeColor = BORDER
+            chart.valueAxis.gridStrokeWidth = 0.5
+            chart.valueAxis.visibleGrid = 1
+            for i, ds in enumerate(datasets):
+                c = CHART_COLORS[i % len(CHART_COLORS)]
+                bc = ds.get("borderColor")
+                if isinstance(bc, str) and bc.startswith("#"):
+                    c = colors.HexColor(bc)
+                chart.lines[i].strokeColor = c
+                chart.lines[i].strokeWidth = 2.5
+            d.add(chart)
+
+        elif chart_type in ("pie", "doughnut"):
+            pie = Pie()
+            pie.x = (draw_w - 280) / 2
+            pie.y = 60
+            pie.width = 280
+            pie.height = 280
+            if datasets:
+                pie.data = datasets[0].get("data", [])
+            for i in range(len(pie.data)):
+                pie.slices[i].fillColor = CHART_COLORS[i % len(CHART_COLORS)]
+                pie.slices[i].strokeColor = SURFACE
+                pie.slices[i].strokeWidth = 2
+            if labels:
+                pie.labels = labels
+                pie.sideLabels = 1
+                pie.slices.fontName = "Helvetica"
+                pie.slices.fontSize = 10
+                pie.slices.fontColor = TEXT
+            d.add(pie)
+
+        else:
+            d.add(String(draw_w / 2, draw_h / 2, f"Unsupported chart type: {chart_type}",
+                         fontSize=12, fillColor=TEXT_MUTED, textAnchor="middle"))
+
+        return [d, Spacer(1, 12)]
+
+    def _render_network(defn_str: str, title: str) -> list:
+        """Render a network/servicemap as a static node-link diagram."""
+        from reportlab.graphics.shapes import Circle, Drawing, Line, Rect, String
+
+        try:
+            cfg = json.loads(defn_str) if isinstance(defn_str, str) else defn_str
+        except (json.JSONDecodeError, TypeError):
+            return [Paragraph(f"<i>Could not parse network config</i>", sBodySmall)]
+
+        nodes = cfg.get("nodes", [])
+        edges = cfg.get("edges", cfg.get("links", []))
+
+        draw_w = content_width
+        max_draw_h = PAGE_H - 2 * MARGIN - 60
+        draw_h = min(max_draw_h, max(350, len(nodes) * 60))
+
+        d = Drawing(draw_w, draw_h)
+        d.add(Rect(0, 0, draw_w, draw_h, fillColor=SURFACE, strokeColor=BORDER, strokeWidth=1))
+        d.add(String(draw_w / 2, draw_h - 25, title, fontSize=14,
+                      fillColor=ACCENT, textAnchor="middle", fontName="Helvetica-Bold"))
+
+        if not nodes:
+            d.add(String(draw_w / 2, draw_h / 2, "(no nodes)", fontSize=12,
+                         fillColor=TEXT_MUTED, textAnchor="middle"))
+            return [d, Spacer(1, 12)]
+
+        # Simple circular layout
+        import math
+        cx, cy = draw_w / 2, (draw_h - 50) / 2 + 10
+        radius = min(cx - 100, cy - 60)
+        n = len(nodes)
+        positions = {}
+        for i, node in enumerate(nodes):
+            angle = 2 * math.pi * i / n - math.pi / 2
+            x = cx + radius * math.cos(angle)
+            y = cy + radius * math.sin(angle)
+            positions[node["id"]] = (x, y)
+
+        # Edges
+        for edge in edges:
+            src = edge.get("source") or edge.get("from")
+            tgt = edge.get("target") or edge.get("to")
+            if src in positions and tgt in positions:
+                x1, y1 = positions[src]
+                x2, y2 = positions[tgt]
+                d.add(Line(x1, y1, x2, y2, strokeColor=colors.HexColor("#484f58"),
+                           strokeWidth=1.5))
+                lbl = edge.get("label")
+                if lbl:
+                    mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+                    d.add(String(mx, my + 8, str(lbl), fontSize=8,
+                                 fillColor=TEXT_MUTED, textAnchor="middle"))
+
+        # Nodes
+        for node in nodes:
+            nid = node["id"]
+            x, y = positions[nid]
+            nc = node.get("color")
+            fill = colors.HexColor(nc) if nc and nc.startswith("#") else ACCENT
+            d.add(Circle(x, y, 16, fillColor=fill, strokeColor=BORDER, strokeWidth=1.5))
+            label = node.get("label") or nid
+            d.add(String(x, y - 28, str(label), fontSize=10, fillColor=TEXT,
+                         textAnchor="middle", fontName="Helvetica-Bold"))
+
+        return [d, Spacer(1, 12)]
+
+    def _render_mermaid(defn: str, title: str = "") -> list:
+        """Render mermaid diagram – try mmdc CLI first, fall back to source."""
+        import subprocess
+        import tempfile
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.mmd', mode='w', delete=False) as f:
+                f.write(defn)
+                mmd_path = f.name
+            png_path = mmd_path.replace('.mmd', '.png')
+            result = subprocess.run(
+                ['mmdc', '-i', mmd_path, '-o', png_path, '-t', 'dark',
+                 '-b', '#0d1117', '-w', '1600'],
+                capture_output=True, timeout=30,
+            )
+            if result.returncode == 0 and os.path.exists(png_path):
+                from reportlab.lib.utils import ImageReader
+                ir = ImageReader(png_path)
+                iw, ih = ir.getSize()
+                aspect = ih / iw
+                img_w = min(content_width, iw)
+                img_h = img_w * aspect
+                max_h = PAGE_H - 2 * MARGIN - 80
+                if img_h > max_h:
+                    img_h = max_h
+                    img_w = img_h / aspect
+                img = Image(png_path, width=img_w, height=img_h)
+                return [img, Spacer(1, 12)]
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+            pass
+        # Fallback: show full source as styled code block
+        lines = defn.strip().split("\n")
+        code = "<br/>".join(_safe(l) for l in lines)
+        return [
+            Paragraph("<b>Mermaid Diagram Source</b>", sH3),
+            Paragraph(code, sCode),
+            Spacer(1, 8),
+        ]
+
+    # ── Build story ───────────────────────────────────────────────────
+    story: list = []
+
+    # Cover page
+    story.append(Spacer(1, 100))
+    story.append(Paragraph("Memgram Export", sTitle))
+    proj_label = f"Project: {project}" if project else "All Projects"
+    story.append(Paragraph(proj_label, sSubtitle))
+
+    from datetime import datetime
+    story.append(Paragraph(f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}", sSubtitle))
+    story.append(Spacer(1, 40))
+
+    # Stats grid on cover
+    stat_items = []
+    for label, count in [
+        ("Sessions", len(sessions)),
+        ("Thoughts", len(thoughts)),
+        ("Rules", len(rules)),
+        ("Errors", len(errors)),
+        ("Plans", len(plans)),
+        ("Specs", len(specs)),
+        ("Features", len(features)),
+        ("Components", len(components)),
+        ("People", len(people)),
+        ("Teams", len(teams_data)),
+        ("Tickets", len(tickets)),
+        ("Diagrams", len(diagrams_data)),
+        ("Instructions", len(instructions_data)),
+        ("Endpoints", len(endpoints)),
+        ("Decisions", len(decisions)),
+        ("Incidents", len(incidents)),
+        ("Dependencies", len(dependencies)),
+        ("Deployments", len(deployments)),
+        ("Builds", len(builds_data)),
+        ("Runbooks", len(runbooks)),
+    ]:
+        if count > 0:
+            stat_items.append((label, count))
+    stat_rows = []
+    nums = []
+    labels_row = []
+    for label, count in stat_items:
+        nums.append(Paragraph(f"<b>{count}</b>", sStat))
+        labels_row.append(Paragraph(label, sStatLabel))
+    cols_per_row = 5
+    for row_start in range(0, len(nums), cols_per_row):
+        chunk_n = nums[row_start:row_start + cols_per_row]
+        chunk_l = labels_row[row_start:row_start + cols_per_row]
+        while len(chunk_n) < cols_per_row:
+            chunk_n.append(Paragraph("", sBody))
+            chunk_l.append(Paragraph("", sBody))
+        stat_rows.append(chunk_n)
+        stat_rows.append(chunk_l)
+
+    cw = content_width / cols_per_row
+    st = Table(stat_rows, colWidths=[cw] * cols_per_row)
+    st.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+        ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]))
+    story.append(st)
+    story.append(PageBreak())
+
+    # ── Table of Contents ─────────────────────────────────────────────
+    story.append(Paragraph("Contents", sH1))
+    toc_items = []
+    if sessions: toc_items.append(("Sessions", "sessions"))
+    if thoughts: toc_items.append(("Thoughts", "thoughts"))
+    if rules: toc_items.append(("Rules", "rules"))
+    if errors: toc_items.append(("Error Patterns", "errors"))
+    if plans: toc_items.append(("Plans", "plans"))
+    if specs: toc_items.append(("Specs", "specs"))
+    if features: toc_items.append(("Features", "features"))
+    if components: toc_items.append(("Components", "components"))
+    if people: toc_items.append(("People", "people"))
+    if teams_data: toc_items.append(("Teams", "teams"))
+    if tickets: toc_items.append(("Tickets", "tickets"))
+    if diagrams_data: toc_items.append(("Diagrams", "diagrams"))
+    if instructions_data: toc_items.append(("Instructions", "instructions"))
+    if endpoints: toc_items.append(("Endpoints", "endpoints"))
+    if decisions: toc_items.append(("Decisions", "decisions"))
+    if deployments: toc_items.append(("Deployments", "deployments"))
+    if builds_data: toc_items.append(("Builds", "builds"))
+    if incidents: toc_items.append(("Incidents", "incidents"))
+    if dependencies: toc_items.append(("Dependencies", "dependencies"))
+    if runbooks: toc_items.append(("Runbooks", "runbooks"))
+    for i, (item, anchor) in enumerate(toc_items, 1):
+        story.append(Paragraph(f'{i}. <a href="#{anchor}" color="#58a6ff">{item}</a>', ParagraphStyle(
+            "TOC", fontName="Helvetica", fontSize=13, textColor=TEXT,
+            leading=20, leftIndent=20)))
+    story.append(PageBreak())
+
+    # ── helper: separator line between detail items ─────────────────
+    def _detail_sep():
+        from reportlab.platypus import HRFlowable
+        return HRFlowable(width="100%", thickness=0.5, color=BORDER,
+                          spaceBefore=8, spaceAfter=8)
+
+    # ── Sessions ──────────────────────────────────────────────────────
+    if sessions:
+        story.append(Paragraph(f'<a name="sessions"/>Sessions ({len(sessions)})', sH1))
+        rows = []
+        for s in sessions:
+            rows.append([
+                (s.get("started_at") or "")[:10],
+                s.get("agent_type") or "-",
+                s.get("model") or "-",
+                s.get("project") or "-",
+                _trunc(s.get("goal") or "-", 200),
+                s.get("status") or "-",
+            ])
+        story.append(_make_table(
+            ["Date", "Agent", "Model", "Project", "Goal", "Status"],
+            rows,
+            col_widths=[1.0*inch, 1.2*inch, 1.8*inch, 1.2*inch, 3.5*inch, 0.9*inch],
+        ))
+        # Detail: sessions with summaries
+        sessions_with_summary = [s for s in sessions if s.get("summary")]
+        if sessions_with_summary:
+            story.append(Spacer(1, 16))
+            story.append(Paragraph("Session Summaries", sH2))
+            for s in sessions_with_summary:
+                story.append(_detail_sep())
+                goal = _safe(s.get("goal") or "Untitled Session")
+                date = (s.get("started_at") or "")[:10]
+                story.append(Paragraph(f"{goal}", sH3))
+                story.extend(_md_to_story(s["summary"]))
+                story.append(Paragraph(
+                    f"Date: {date} | Project: {_safe(s.get('project') or 'global')} | "
+                    f"Model: {_safe(s.get('model') or '-')}",
+                    sBodySmall))
+        story.append(PageBreak())
+
+    # ── Thoughts ──────────────────────────────────────────────────────
+    if thoughts:
+        story.append(Paragraph(f'<a name="thoughts"/>Thoughts ({len(thoughts)})', sH1))
+        rows = []
+        for t in thoughts:
+            rows.append([
+                t.get("type") or "-",
+                _trunc(t.get("summary") or "-", 250),
+                t.get("project") or "global",
+                (t.get("created_at") or "")[:10],
+            ])
+        story.append(_make_table(
+            ["Type", "Summary", "Project", "Created"],
+            rows,
+            col_widths=[1.2*inch, 5.5*inch, 1.5*inch, 1.0*inch],
+        ))
+        # Detail: full thought content
+        thoughts_with_content = [t for t in thoughts if t.get("content")]
+        if thoughts_with_content:
+            story.append(PageBreak())
+            story.append(Paragraph("Thought Details", sH2))
+            for t in thoughts_with_content:
+                story.append(_detail_sep())
+                story.append(Paragraph(_safe(t.get("summary") or "Untitled Thought"), sH3))
+                story.extend(_md_to_story(t["content"]))
+                story.append(Paragraph(
+                    f"Type: {_safe(t.get('type') or '-')} | "
+                    f"Project: {_safe(t.get('project') or 'global')} | "
+                    f"Created: {(t.get('created_at') or '')[:10]}",
+                    sBodySmall))
+        story.append(PageBreak())
+
+    # ── Rules ─────────────────────────────────────────────────────────
+    if rules:
+        story.append(Paragraph(f'<a name="rules"/>Rules ({len(rules)})', sH1))
+        rows = []
+        for r in rules:
+            pin = "[P] " if r.get("pinned") else ""
+            rows.append([
+                r.get("severity") or "-",
+                r.get("type") or "-",
+                f"{pin}{_trunc(r.get('summary') or '-', 220)}",
+                str(r.get("reinforcement_count", 0)),
+                r.get("project") or "global",
+            ])
+        story.append(_make_table(
+            ["Severity", "Type", "Summary", "Reinforced", "Project"],
+            rows,
+            col_widths=[1.0*inch, 1.2*inch, 4.8*inch, 1.0*inch, 1.2*inch],
+        ))
+        # Detail: full rule content
+        rules_with_content = [r for r in rules if r.get("content")]
+        if rules_with_content:
+            story.append(PageBreak())
+            story.append(Paragraph("Rule Details", sH2))
+            for r in rules_with_content:
+                story.append(_detail_sep())
+                pin = "[Pinned] " if r.get("pinned") else ""
+                story.append(Paragraph(f"{pin}{_safe(r.get('summary') or 'Untitled Rule')}", sH3))
+                story.extend(_md_to_story(r["content"]))
+                story.append(Paragraph(
+                    f"Severity: {_safe(r.get('severity') or '-')} | "
+                    f"Type: {_safe(r.get('type') or '-')} | "
+                    f"Project: {_safe(r.get('project') or 'global')} | "
+                    f"Condition: {_safe(r.get('condition') or '-')}",
+                    sBodySmall))
+        story.append(PageBreak())
+
+    # ── Errors ────────────────────────────────────────────────────────
+    if errors:
+        story.append(Paragraph(f'<a name="errors"/>Error Patterns ({len(errors)})', sH1))
+        rows = []
+        for e in errors:
+            rows.append([
+                _trunc(e.get("error_description") or "-", 200),
+                _trunc(e.get("root_cause") or "-", 200),
+                _trunc(e.get("fix") or "-", 200),
+                str(e.get("occurrence_count", 0)),
+                (e.get("created_at") or "")[:10],
+            ])
+        story.append(_make_table(
+            ["Error", "Root Cause", "Fix", "Count", "First Seen"],
+            rows,
+            col_widths=[2.8*inch, 2.3*inch, 2.3*inch, 0.7*inch, 1.0*inch],
+        ))
+        # Detail: full error descriptions
+        story.append(PageBreak())
+        story.append(Paragraph("Error Pattern Details", sH2))
+        for e in errors:
+            story.append(_detail_sep())
+            story.append(Paragraph(
+                _safe(e.get("error_description") or "Unknown Error"), sH3))
+            if e.get("error_description"):
+                story.append(Paragraph("<b>Description:</b>", sBody))
+                story.extend(_md_to_story(e['error_description']))
+            if e.get("cause"):
+                story.append(Paragraph("<b>Cause:</b>", sBody))
+                story.extend(_md_to_story(e['cause']))
+            if e.get("root_cause"):
+                story.append(Paragraph("<b>Root Cause:</b>", sBody))
+                story.extend(_md_to_story(e['root_cause']))
+            if e.get("fix"):
+                story.append(Paragraph("<b>Fix:</b>", sBody))
+                story.extend(_md_to_story(e['fix']))
+            story.append(Paragraph(
+                f"Occurrences: {e.get('occurrence_count', 0)} | "
+                f"First seen: {(e.get('created_at') or '')[:10]} | "
+                f"Project: {_safe(e.get('project') or 'global')}",
+                sBodySmall))
+        story.append(PageBreak())
+
+    # ── Plans ─────────────────────────────────────────────────────────
+    if plans:
+        story.append(Paragraph(f'<a name="plans"/>Plans ({len(plans)})', sH1))
+        for plan in plans:
+            story.append(Paragraph(_safe(plan.get("title") or "Untitled Plan"), sH2))
+            meta = [
+                ("Status", plan.get("status") or "-"),
+                ("Project", plan.get("project") or "global"),
+                ("Created", (plan.get("created_at") or "")[:10]),
+            ]
+            meta_rows = [[k, v] for k, v in meta]
+            story.append(_make_table(["Field", "Value"], meta_rows,
+                         col_widths=[1.5*inch, 4*inch]))
+            if plan.get("description"):
+                story.append(Spacer(1, 6))
+                story.extend(_md_to_story(plan["description"]))
+            ptasks = tasks_by_plan.get(plan["id"], [])
+            if ptasks:
+                story.append(Spacer(1, 6))
+                story.append(Paragraph("Tasks", sH3))
+                task_rows = []
+                for pt in ptasks:
+                    done = "Done" if pt.get("done") else "Open"
+                    task_rows.append([
+                        str(pt.get("position", "")),
+                        _trunc(pt.get("title") or "-", 60),
+                        done,
+                    ])
+                story.append(_make_table(["#", "Task", "Status"], task_rows,
+                             col_widths=[0.5*inch, 5*inch, 1*inch]))
+            story.append(Spacer(1, 14))
+        story.append(PageBreak())
+
+    # ── Specs ─────────────────────────────────────────────────────────
+    if specs:
+        story.append(Paragraph(f'<a name="specs"/>Specs ({len(specs)})', sH1))
+        rows = []
+        for s in specs:
+            rows.append([
+                _trunc(s.get("title") or "-", 50),
+                s.get("status") or "-",
+                s.get("project") or "global",
+                (s.get("updated_at") or "")[:10],
+            ])
+        story.append(_make_table(
+            ["Title", "Status", "Project", "Updated"],
+            rows,
+            col_widths=[4.5*inch, 1.2*inch, 1.5*inch, 1.0*inch],
+        ))
+        story.append(PageBreak())
+
+    # ── Features ──────────────────────────────────────────────────────
+    if features:
+        story.append(Paragraph(f'<a name="features"/>Features ({len(features)})', sH1))
+        rows = []
+        for f in features:
+            rows.append([
+                _trunc(f.get("name") or "-", 50),
+                f.get("status") or "-",
+                f.get("project") or "global",
+                (f.get("updated_at") or "")[:10],
+            ])
+        story.append(_make_table(
+            ["Feature", "Status", "Project", "Updated"],
+            rows,
+            col_widths=[4.5*inch, 1.2*inch, 1.5*inch, 1.0*inch],
+        ))
+        story.append(PageBreak())
+
+    # ── Components ────────────────────────────────────────────────────
+    if components:
+        story.append(Paragraph(f'<a name="components"/>Components ({len(components)})', sH1))
+        rows = []
+        for c in components:
+            rows.append([
+                _trunc(c.get("name") or "-", 40),
+                c.get("component_type") or "-",
+                _trunc(c.get("description") or "-", 50),
+                c.get("project") or "global",
+            ])
+        story.append(_make_table(
+            ["Component", "Type", "Description", "Project"],
+            rows,
+            col_widths=[2.2*inch, 1.2*inch, 3.8*inch, 1.2*inch],
+        ))
+        if len(components) >= 5:
+            story.append(PageBreak())
+        else:
+            story.append(Spacer(1, 20))
+
+    # ── People ────────────────────────────────────────────────────────
+    if people:
+        story.append(Paragraph(f'<a name="people"/>People ({len(people)})', sH1))
+        rows = []
+        for p in people:
+            rows.append([
+                _trunc(p.get("name") or "-", 30),
+                p.get("role") or "-",
+                p.get("email") or "-",
+                _trunc(p.get("notes") or "-", 50),
+            ])
+        story.append(_make_table(
+            ["Name", "Role", "Email", "Notes"],
+            rows,
+            col_widths=[2.0*inch, 2.0*inch, 2.5*inch, 2.7*inch],
+        ))
+        if len(people) >= 5:
+            story.append(PageBreak())
+        else:
+            story.append(Spacer(1, 20))
+
+    # ── Teams ─────────────────────────────────────────────────────────
+    if teams_data:
+        story.append(Paragraph(f'<a name="teams"/>Teams ({len(teams_data)})', sH1))
+        rows = []
+        for t in teams_data:
+            rows.append([
+                _trunc(t.get("name") or "-", 30),
+                _trunc(t.get("description") or "-", 200),
+                t.get("project") or "global",
+            ])
+        story.append(_make_table(
+            ["Team", "Description", "Project"],
+            rows,
+            col_widths=[2.0*inch, 5.0*inch, 1.5*inch],
+        ))
+        if len(teams_data) >= 5:
+            story.append(PageBreak())
+        else:
+            story.append(Spacer(1, 20))
+
+    # ── Tickets ───────────────────────────────────────────────────────
+    if tickets:
+        story.append(Paragraph(f'<a name="tickets"/>Tickets ({len(tickets)})', sH1))
+        rows = []
+        for t in tickets:
+            rows.append([
+                _trunc(t.get("title") or "-", 50),
+                t.get("status") or "-",
+                t.get("priority") or "-",
+                t.get("project") or "-",
+                (t.get("updated_at") or "")[:10],
+            ])
+        story.append(_make_table(
+            ["Title", "Status", "Priority", "Project", "Updated"],
+            rows,
+            col_widths=[4.0*inch, 1.0*inch, 1.0*inch, 1.2*inch, 1.0*inch],
+        ))
+        story.append(PageBreak())
+
+    # ── Diagrams ──────────────────────────────────────────────────────
+    if diagrams_data:
+        story.append(Paragraph(f'<a name="diagrams"/>Diagrams ({len(diagrams_data)})', sH1))
+        story.append(Spacer(1, 12))
+        for diag in diagrams_data:
+            story.append(Paragraph(_safe(diag.get("title") or "Untitled"), sH2))
+            dtype = (diag.get("diagram_type") or "").lower()
+            if diag.get("description"):
+                story.extend(_md_to_story(diag["description"]))
+                story.append(Spacer(1, 8))
+
+            defn = diag.get("definition", "")
+            if defn:
+                if dtype == "chart":
+                    story.extend(_render_chart(defn, diag.get("title", "Chart")))
+                elif dtype in ("network", "servicemap"):
+                    story.extend(_render_network(defn, diag.get("title", "Network")))
+                elif dtype == "mermaid":
+                    story.extend(_render_mermaid(defn, diag.get("title", "Diagram")))
+                elif dtype == "table":
+                    try:
+                        tdata = json.loads(defn)
+                        cols = tdata.get("columns", [])
+                        trows = tdata.get("rows", [])
+                        rendered_rows = []
+                        for row in trows:
+                            if isinstance(row, dict):
+                                rendered_rows.append([str(row.get(c, "")) for c in cols])
+                            elif isinstance(row, list):
+                                rendered_rows.append([str(v) for v in row])
+                            else:
+                                rendered_rows.append([str(row)])
+                        story.append(_make_table(
+                            [str(c) for c in cols], rendered_rows))
+                    except (ValueError, TypeError):
+                        story.append(Paragraph(_safe(defn), sCode))
+                else:
+                    story.append(Paragraph(_safe(defn), sCode))
+
+            story.append(Spacer(1, 20))
+        story.append(PageBreak())
+
+    # ── Instructions ──────────────────────────────────────────────────
+    if instructions_data:
+        story.append(Paragraph(f'<a name="instructions"/>Instructions ({len(instructions_data)})', sH1))
+        rows = []
+        for ins in instructions_data:
+            active = "Yes" if ins.get("active") else "No"
+            rows.append([
+                _trunc(ins.get("title") or "-", 200),
+                ins.get("section") or "-",
+                str(ins.get("priority", "-")),
+                ins.get("scope") or "-",
+                active,
+            ])
+        story.append(_make_table(
+            ["Title", "Section", "Priority", "Scope", "Active"],
+            rows,
+            col_widths=[4.0*inch, 1.5*inch, 0.8*inch, 1.0*inch, 0.7*inch],
+        ))
+        # Detail: full instruction content
+        story.append(PageBreak())
+        story.append(Paragraph("Instruction Details", sH2))
+        for ins in instructions_data:
+            story.append(_detail_sep())
+            story.append(Paragraph(
+                _safe(ins.get("title") or "Untitled Instruction"), sH2))
+            if ins.get("content"):
+                story.extend(_md_to_story(ins["content"]))
+            else:
+                story.append(Paragraph("<i>No content body</i>", sBodySmall))
+            meta_parts = []
+            if ins.get("section"):
+                meta_parts.append(f"Section: {_safe(ins['section'])}")
+            if ins.get("scope"):
+                meta_parts.append(f"Scope: {_safe(ins['scope'])}")
+            if ins.get("priority") is not None:
+                meta_parts.append(f"Priority: {ins['priority']}")
+            active = "Active" if ins.get("active") else "Inactive"
+            meta_parts.append(active)
+            story.append(Paragraph(" | ".join(meta_parts), sBodySmall))
+        story.append(PageBreak())
+
+    # ── Endpoints ─────────────────────────────────────────────────────
+    if endpoints:
+        story.append(Paragraph(f'<a name="endpoints"/>Endpoints ({len(endpoints)})', sH1))
+        rows = []
+        for e in endpoints:
+            rows.append([
+                e.get("method") or "-",
+                _trunc(e.get("path") or "-", 50),
+                _trunc(e.get("description") or "-", 40),
+                e.get("project") or "-",
+            ])
+        story.append(_make_table(
+            ["Method", "Path", "Description", "Project"],
+            rows,
+            col_widths=[1.0*inch, 3.5*inch, 3.0*inch, 1.2*inch],
+        ))
+        story.append(PageBreak())
+
+    # ── Decisions ─────────────────────────────────────────────────────
+    if decisions:
+        story.append(Paragraph(f'<a name="decisions"/>Decisions ({len(decisions)})', sH1))
+        rows = []
+        for d in decisions:
+            rows.append([
+                _trunc(d.get("title") or "-", 200),
+                d.get("status") or "-",
+                d.get("project") or "global",
+                (d.get("created_at") or "")[:10],
+            ])
+        story.append(_make_table(
+            ["Decision", "Status", "Project", "Date"],
+            rows,
+            col_widths=[4.5*inch, 1.2*inch, 1.5*inch, 1.0*inch],
+        ))
+        # Detail: full decision context
+        story.append(PageBreak())
+        story.append(Paragraph("Decision Details", sH2))
+        for d in decisions:
+            story.append(_detail_sep())
+            story.append(Paragraph(
+                _safe(d.get("title") or "Untitled Decision"), sH3))
+            if d.get("context"):
+                story.append(Paragraph("<b>Context:</b>", sBody))
+                story.extend(_md_to_story(d['context']))
+            if d.get("options"):
+                opts = _json_list(d["options"])
+                if opts:
+                    story.append(Paragraph("<b>Options:</b>", sBody))
+                    for i, opt in enumerate(opts, 1):
+                        story.append(Paragraph(
+                            f"  {i}. {_safe(opt)}", sBody))
+                else:
+                    story.append(Paragraph(
+                        f"<b>Options:</b> {_safe(d['options'])}", sBody))
+            if d.get("outcome"):
+                story.append(Paragraph("<b>Outcome:</b>", sBody))
+                story.extend(_md_to_story(d['outcome']))
+            if d.get("consequences"):
+                story.append(Paragraph("<b>Consequences:</b>", sBody))
+                story.extend(_md_to_story(d['consequences']))
+            story.append(Paragraph(
+                f"Status: {_safe(d.get('status') or '-')} | "
+                f"Project: {_safe(d.get('project') or 'global')} | "
+                f"Date: {(d.get('created_at') or '')[:10]}",
+                sBodySmall))
+        story.append(PageBreak())
+
+    # ── Deployments ───────────────────────────────────────────────────
+    if deployments:
+        story.append(Paragraph(f'<a name="deployments"/>Deployments ({len(deployments)})', sH1))
+        rows = []
+        for d in deployments:
+            rows.append([
+                _trunc(d.get("version") or d.get("id", "-"), 30),
+                d.get("environment") or "-",
+                d.get("status") or "-",
+                d.get("project") or "-",
+                (d.get("created_at") or "")[:10],
+            ])
+        story.append(_make_table(
+            ["Version", "Environment", "Status", "Project", "Date"],
+            rows,
+            col_widths=[2.0*inch, 1.8*inch, 1.2*inch, 1.5*inch, 1.0*inch],
+        ))
+        if len(deployments) >= 5:
+            story.append(PageBreak())
+        else:
+            story.append(Spacer(1, 20))
+
+    # ── Builds ────────────────────────────────────────────────────────
+    if builds_data:
+        story.append(Paragraph(f'<a name="builds"/>Builds ({len(builds_data)})', sH1))
+        rows = []
+        for b in builds_data:
+            rows.append([
+                _trunc(b.get("version") or b.get("id", "-"), 30),
+                b.get("status") or "-",
+                b.get("project") or "-",
+                (b.get("created_at") or "")[:10],
+            ])
+        story.append(_make_table(
+            ["Version", "Status", "Project", "Date"],
+            rows,
+            col_widths=[3.0*inch, 1.5*inch, 2.0*inch, 1.0*inch],
+        ))
+        if len(builds_data) >= 5:
+            story.append(PageBreak())
+        else:
+            story.append(Spacer(1, 20))
+
+    # ── Incidents ─────────────────────────────────────────────────────
+    if incidents:
+        story.append(Paragraph(f'<a name="incidents"/>Incidents ({len(incidents)})', sH1))
+        rows = []
+        for inc in incidents:
+            rows.append([
+                _trunc(inc.get("title") or "-", 50),
+                inc.get("severity") or "-",
+                inc.get("status") or "-",
+                inc.get("project") or "-",
+                (inc.get("created_at") or "")[:10],
+            ])
+        story.append(_make_table(
+            ["Incident", "Severity", "Status", "Project", "Date"],
+            rows,
+            col_widths=[4.0*inch, 1.0*inch, 1.0*inch, 1.2*inch, 1.0*inch],
+        ))
+        story.append(PageBreak())
+
+    # ── Dependencies ──────────────────────────────────────────────────
+    if dependencies:
+        story.append(Paragraph(f'<a name="dependencies"/>Dependencies ({len(dependencies)})', sH1))
+        rows = []
+        for dep in dependencies:
+            rows.append([
+                _trunc(dep.get("name") or "-", 30),
+                dep.get("version") or "-",
+                dep.get("dep_type") or "-",
+                dep.get("project") or "-",
+            ])
+        story.append(_make_table(
+            ["Dependency", "Version", "Type", "Project"],
+            rows,
+            col_widths=[3.0*inch, 1.5*inch, 1.5*inch, 1.5*inch],
+        ))
+        if len(dependencies) >= 5:
+            story.append(PageBreak())
+        else:
+            story.append(Spacer(1, 20))
+
+    # ── Runbooks ──────────────────────────────────────────────────────
+    if runbooks:
+        story.append(Paragraph(f'<a name="runbooks"/>Runbooks ({len(runbooks)})', sH1))
+        for rb in runbooks:
+            story.append(Paragraph(_safe(rb.get("title") or "Untitled"), sH2))
+            if rb.get("description"):
+                story.extend(_md_to_story(rb["description"]))
+            steps = _json_list(rb.get("steps"))
+            if steps:
+                for i, step in enumerate(steps, 1):
+                    story.append(Paragraph(f"{i}. {_safe(step)}", sBody))
+            story.append(Spacer(1, 14))
+        story.append(PageBreak())
+
+    # ── Build the PDF ─────────────────────────────────────────────────
+    out_path = Path(output_file)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _page_bg(canvas, doc):
+        canvas.saveState()
+        canvas.setFillColor(BG)
+        canvas.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
+        # Footer
+        canvas.setFillColor(TEXT_MUTED)
+        canvas.setFont("Helvetica", 8)
+        canvas.drawCentredString(PAGE_W / 2, 20,
+                                 f"Memgram Export — Page {doc.page}")
+        canvas.restoreState()
+
+    frame = Frame(MARGIN, MARGIN + 10, content_width, PAGE_H - 2 * MARGIN - 10,
+                  id="main", showBoundary=0)
+    template = PageTemplate(id="main", frames=[frame], onPage=_page_bg,
+                            pagesize=PAGE)
+
+    doc = BaseDocTemplate(str(out_path), pagesize=PAGE,
+                          leftMargin=MARGIN, rightMargin=MARGIN,
+                          topMargin=MARGIN, bottomMargin=MARGIN)
+    doc.addPageTemplates([template])
+    doc.build(story)
+
+    return out_path
+
+
 def main_export():
     """CLI entry point for export."""
     import argparse
@@ -4826,10 +6026,10 @@ def main_export():
     parser.add_argument("--db-path", type=str, default=default_db,
                         help=f"Path to SQLite database (default: {default_db})")
     parser.add_argument("-o", "--output", type=str, default=None,
-                        help="Output directory (default: memgram-export or memgram-jekyll)")
+                        help="Output directory or file (default: memgram-export or memgram-jekyll)")
     parser.add_argument("-f", "--format", type=str, default="markdown",
-                        choices=["markdown", "jekyll", "html"],
-                        help="Export format: markdown (plain), jekyll (GitHub Pages site), or html (static website)")
+                        choices=["markdown", "jekyll", "html", "pdf"],
+                        help="Export format: markdown (plain), jekyll (GitHub Pages site), html (static website), or pdf (report)")
     parser.add_argument("-p", "--project", type=str, default=None,
                         help="Export only a single project (by name)")
     args = parser.parse_args()
@@ -4844,6 +6044,10 @@ def main_export():
         out_path, count = export_html(db_path=args.db_path, output_dir=output_dir, project=args.project)
         print(f"Exported {count} files as static HTML site to {out_path.resolve()}")
         print(f"Open {out_path.resolve()}/index.html in a browser or serve with any static file server")
+    elif args.format == "pdf":
+        output_file = args.output or "memgram-export.pdf"
+        out_path = export_pdf(db_path=args.db_path, output_file=output_file, project=args.project)
+        print(f"Exported PDF report to {out_path.resolve()}")
     else:
         output_dir = args.output or "memgram-export"
         out_path, count = export_markdown(db_path=args.db_path, output_dir=output_dir, project=args.project)
